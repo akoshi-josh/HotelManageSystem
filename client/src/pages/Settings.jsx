@@ -1,10 +1,15 @@
 import React, { useState } from "react";
+import {
+  RiHotelLine, RiLockPasswordLine, RiAlertLine,
+  RiGroupLine, RiHotelBedLine, RiMoneyDollarCircleLine, RiDeleteBin2Line,
+  RiSaveLine, RiKeyLine,
+} from "react-icons/ri";
 import supabase from "../supabaseClient";
 
 const CLEAR_ACTIONS = [
   {
     id: "guests",
-    icon: "👥",
+    Icon: RiGroupLine,
     title: "Clear Guest & Reservation History",
     desc: "Deletes ALL reservation records. Rooms reset to available.",
     warn: "ALL guest records and reservations will be permanently deleted. This cannot be undone.",
@@ -12,7 +17,7 @@ const CLEAR_ACTIONS = [
   },
   {
     id: "rooms",
-    icon: "🛏️",
+    Icon: RiHotelBedLine,
     title: "Delete All Rooms",
     desc: "Permanently deletes ALL room records from the database.",
     warn: "ALL rooms will be permanently deleted from the database. This cannot be undone.",
@@ -20,7 +25,7 @@ const CLEAR_ACTIONS = [
   },
   {
     id: "revenue",
-    icon: "💰",
+    Icon: RiMoneyDollarCircleLine,
     title: "Clear Revenue Data",
     desc: "Wipes all payment data from checked-out reservations.",
     warn: "All payment amounts from checked-out reservations will be reset to 0.",
@@ -28,7 +33,7 @@ const CLEAR_ACTIONS = [
   },
   {
     id: "all",
-    icon: "🗑️",
+    Icon: RiDeleteBin2Line,
     title: "Clear Everything",
     desc: "Nuclear option — deletes ALL guests, rooms, and revenue.",
     warn: "EVERYTHING will be permanently wiped. The system will be completely empty.",
@@ -46,7 +51,7 @@ const CSS = `
 .stg-col  { display:flex; flex-direction:column; gap:24px; }
 .stg-card { background:#fff; border-radius:16px; padding:24px; box-shadow:0 2px 8px rgba(0,0,0,.05); border:1px solid #e4ebe4; }
 .stg-card-hdr { display:flex; align-items:center; gap:10px; margin-bottom:20px; }
-.stg-card-ico { font-size:1.3rem; }
+.stg-card-ico { display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .stg-card-title { font-size:1rem; font-weight:700; color:#07713c; margin:0; }
 .stg-card-sub   { font-size:.8rem; color:#9aaa9a; margin:2px 0 0; }
 .danger-item { border-radius:12px; padding:16px 18px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
@@ -55,7 +60,7 @@ const CSS = `
 .fi { width:100%; padding:10px 14px; border:1.5px solid #ccdacc; border-radius:10px; font-size:.9rem; font-family:Arial,sans-serif; outline:none; background:#fff; color:#07713c; box-sizing:border-box; transition:border-color .2s,box-shadow .2s; }
 .fi:focus { border-color:#07713c; box-shadow:0 0 0 3px rgba(7,113,60,.1); }
 .fi::placeholder { color:#a8b8a8; font-style:italic; }
-.btn-primary { width:100%; padding:11px; background:#07713c; color:#fff; border:none; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:700; font-family:Arial,sans-serif; box-shadow:0 4px 14px rgba(7,113,60,.28); }
+.btn-primary { width:100%; padding:11px; background:#07713c; color:#fff; border:none; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:700; font-family:Arial,sans-serif; box-shadow:0 4px 14px rgba(7,113,60,.28); display:inline-flex; align-items:center; justify-content:center; gap:7px; }
 .btn-primary:hover { background:#05592f; }
 .btn-blue { background:#1565c0; box-shadow:0 4px 14px rgba(21,101,192,.25); }
 .btn-blue:hover { background:#0d47a1; }
@@ -84,19 +89,17 @@ export default function Settings({ user }) {
   const [hotelAddress, setHotelAddress] = useState("");
   const [savingInfo,   setSavingInfo]   = useState(false);
   const [infoMsg,      setInfoMsg]      = useState("");
-
-  const [modal,      setModal]      = useState(null);
-  const [password,   setPassword]   = useState("");
-  const [pwErr,      setPwErr]      = useState("");
-  const [confirming, setConfirming] = useState(false);
-  const [doneMsg,    setDoneMsg]    = useState("");
-
-  const [curPw,      setCurPw]      = useState("");
-  const [newPw,      setNewPw]      = useState("");
-  const [confPw,     setConfPw]     = useState("");
-  const [changingPw, setChangingPw] = useState(false);
-  const [pwMsg,      setPwMsg]      = useState("");
-  const [pwErrMsg,   setPwErrMsg]   = useState("");
+  const [modal,        setModal]        = useState(null);
+  const [password,     setPassword]     = useState("");
+  const [pwErr,        setPwErr]        = useState("");
+  const [confirming,   setConfirming]   = useState(false);
+  const [doneMsg,      setDoneMsg]      = useState("");
+  const [curPw,        setCurPw]        = useState("");
+  const [newPw,        setNewPw]        = useState("");
+  const [confPw,       setConfPw]       = useState("");
+  const [changingPw,   setChangingPw]   = useState(false);
+  const [pwMsg,        setPwMsg]        = useState("");
+  const [pwErrMsg,     setPwErrMsg]     = useState("");
 
   const openClear = (a) => { setModal(a); setPassword(""); setPwErr(""); setDoneMsg(""); };
 
@@ -119,7 +122,7 @@ export default function Settings({ user }) {
       if (modal.id === "revenue") {
         await supabase.from("reservations").update({ amount_paid: 0, total_amount: 0, extra_charges: 0 }).eq("status", "checked_out");
       }
-      setDoneMsg("✅ Done! Data has been cleared successfully.");
+      setDoneMsg("Done! Data has been cleared successfully.");
       setConfirming(false);
       setTimeout(() => { setModal(null); setDoneMsg(""); }, 2000);
     } catch (e) {
@@ -155,11 +158,11 @@ export default function Settings({ user }) {
         </div>
 
         <div className="stg-grid">
-          {/* LEFT COLUMN */}
           <div className="stg-col">
+            {/* Hotel Info */}
             <div className="stg-card">
               <div className="stg-card-hdr">
-                <span className="stg-card-ico">🏨</span>
+                <span className="stg-card-ico"><RiHotelLine size={22} color="#07713c" /></span>
                 <div>
                   <p className="stg-card-title">Hotel Information</p>
                   <p className="stg-card-sub">Basic details shown on receipts and reports</p>
@@ -168,9 +171,9 @@ export default function Settings({ user }) {
               {infoMsg && <div className="alert-ok">{infoMsg}</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                 {[
-                  ["Hotel Name",     "text",  hotelName,    setHotelName,    "Grand Hotel"],
-                  ["Contact Email",  "email", hotelEmail,   setHotelEmail,   "hotel@email.com"],
-                  ["Contact Phone",  "text",  hotelPhone,   setHotelPhone,   "+63 9XX XXX XXXX"],
+                  ["Hotel Name",    "text",  hotelName,    setHotelName,    "Grand Hotel"],
+                  ["Contact Email", "email", hotelEmail,   setHotelEmail,   "hotel@email.com"],
+                  ["Contact Phone", "text",  hotelPhone,   setHotelPhone,   "+63 9XX XXX XXXX"],
                 ].map(([lbl, tp, val, setter, ph]) => (
                   <div key={lbl}>
                     <label className="flabel">{lbl}</label>
@@ -188,18 +191,20 @@ export default function Settings({ user }) {
                     setSavingInfo(true);
                     await new Promise(r => setTimeout(r, 600));
                     setSavingInfo(false);
-                    setInfoMsg("✅ Hotel information saved!");
+                    setInfoMsg("Hotel information saved!");
                     setTimeout(() => setInfoMsg(""), 2500);
                   }}
                 >
-                  {savingInfo ? "Saving…" : "💾 Save Information"}
+                  <RiSaveLine size={16} />
+                  {savingInfo ? "Saving…" : "Save Information"}
                 </button>
               </div>
             </div>
 
+            {/* Change Password */}
             <div className="stg-card">
               <div className="stg-card-hdr">
-                <span className="stg-card-ico">🔐</span>
+                <span className="stg-card-ico"><RiLockPasswordLine size={22} color="#07713c" /></span>
                 <div>
                   <p className="stg-card-title">Change Password</p>
                   <p className="stg-card-sub">Update your account password</p>
@@ -218,21 +223,18 @@ export default function Settings({ user }) {
                     <input type="password" className="fi" value={val} onChange={e => setter(e.target.value)} placeholder="••••••••" />
                   </div>
                 ))}
-                <button
-                  className="btn-primary btn-blue"
-                  disabled={changingPw}
-                  onClick={handleChangePw}
-                >
-                  {changingPw ? "Updating…" : "🔑 Update Password"}
+                <button className="btn-primary btn-blue" disabled={changingPw} onClick={handleChangePw}>
+                  <RiKeyLine size={16} />
+                  {changingPw ? "Updating…" : "Update Password"}
                 </button>
               </div>
             </div>
           </div>
 
-          {/* RIGHT COLUMN — Danger Zone */}
+          {/* Danger Zone */}
           <div className="stg-card">
             <div className="stg-card-hdr">
-              <span className="stg-card-ico">⚠️</span>
+              <span className="stg-card-ico"><RiAlertLine size={22} color="#c62828" /></span>
               <div>
                 <p style={{ margin: 0, fontSize: "1rem", fontWeight: "700", color: "#c62828" }}>Danger Zone</p>
                 <p className="stg-card-sub">Irreversible actions. Admin password required.</p>
@@ -242,7 +244,7 @@ export default function Settings({ user }) {
               <div key={a.id} className="danger-item" style={{ background: a.bg, border: `1.5px solid ${a.border}` }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                    <span style={{ fontSize: "1.1rem" }}>{a.icon}</span>
+                    <a.Icon size={18} color={a.color} />
                     <span style={{ fontWeight: "700", fontSize: ".9rem", color: a.color }}>{a.title}</span>
                   </div>
                   <p style={{ margin: 0, fontSize: ".82rem", color: "#6b7a6b", lineHeight: "1.4" }}>{a.desc}</p>
@@ -264,27 +266,27 @@ export default function Settings({ user }) {
           <div className="mb" style={{ maxWidth: "440px" }} onClick={e => e.stopPropagation()}>
             <div className="mh" style={{ background: `linear-gradient(135deg,${modal.color},${modal.color}cc)` }}>
               <div>
-                <div style={{ fontSize: "2rem", marginBottom: "8px" }}>{modal.icon}</div>
+                <div style={{ marginBottom: "8px" }}><modal.Icon size={32} color="#fff" /></div>
                 <p className="mh-title">{modal.title}</p>
                 <p className="mh-sub">Admin authentication required</p>
               </div>
               <button className="mx" onClick={() => setModal(null)}>×</button>
             </div>
-
             <div className="mbody">
               {doneMsg ? (
                 <div className="alert-ok" style={{ textAlign: "center" }}>{doneMsg}</div>
               ) : (
                 <>
                   <div style={{ background: "#fdecea", border: "1.5px solid #fca5a5", borderRadius: "10px", padding: "14px 16px", marginBottom: "20px" }}>
-                    <div style={{ fontWeight: "700", color: "#b71c1c", fontSize: ".85rem", marginBottom: "4px" }}>⚠️ Warning</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: "700", color: "#b71c1c", fontSize: ".85rem", marginBottom: "4px" }}>
+                      <RiAlertLine size={16} /> Warning
+                    </div>
                     <p style={{ margin: 0, fontSize: ".83rem", color: "#6b7a6b", lineHeight: "1.5" }}>{modal.warn}</p>
                   </div>
                   <div>
                     <label className="flabel">Enter Admin Password to Confirm</label>
                     <input
-                      type="password" className="fi"
-                      value={password}
+                      type="password" className="fi" value={password}
                       onChange={e => { setPassword(e.target.value); setPwErr(""); }}
                       placeholder="••••••••"
                       onKeyDown={e => e.key === "Enter" && handleClear()}
@@ -296,7 +298,6 @@ export default function Settings({ user }) {
                 </>
               )}
             </div>
-
             {!doneMsg && (
               <div className="mfoot">
                 <button className="btn-cancel" onClick={() => setModal(null)}>Cancel</button>

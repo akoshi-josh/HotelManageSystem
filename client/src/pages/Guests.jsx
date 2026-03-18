@@ -1,198 +1,356 @@
 import React, { useState, useEffect } from "react";
+import { RiGroupLine, RiHome4Line, RiStarLine } from "react-icons/ri";
 import supabase from "../supabaseClient";
 
-const font = "'Arial', sans-serif";
-const inputStyle = { width: "100%", padding: "10px 14px", border: "2px solid #e8e8e8", borderRadius: "8px", fontSize: "0.9rem", outline: "none", fontFamily: font, boxSizing: "border-box", background: "white", transition: "border 0.2s" };
-const labelStyle = { display: "block", fontSize: "0.8rem", fontWeight: "700", color: "#555", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.4px" };
+const STATUS_CFG = {
+  confirmed:   { bg: "#e8f5e9", color: "#1b5e20",  label: "Confirmed"   },
+  checked_in:  { bg: "#e3f2fd", color: "#1565c0",  label: "Checked In"  },
+  checked_out: { bg: "#f3e5f5", color: "#6a1b9a",  label: "Checked Out" },
+  cancelled:   { bg: "#fce4ec", color: "#c62828",  label: "Cancelled"   },
+  pending:     { bg: "#fff8e1", color: "#f57f17",  label: "Pending"     },
+};
+
+const CSS = `
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.page { padding: 28px 32px; font-family: Arial,sans-serif; background: #f4f6f0; min-height: 100%; }
+.page-hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
+.page-title { font-size:1.6rem; font-weight:700; color:#07713c; margin:0; }
+.page-sub   { font-size:.88rem; color:#6b7a6b; margin:4px 0 0; }
+.sc-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px; }
+.sc { border-radius:14px; padding:20px 22px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+.sc-row { display:flex; align-items:center; gap:8px; margin-bottom:9px; }
+.sc-ico { display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.sc-lbl { font-size:.8rem; font-weight:700; text-transform:uppercase; }
+.sc-val { font-size:1.9rem; font-weight:700; color:#1a1a1a; }
+.fbar { display:flex; gap:12px; align-items:center; background:#fff; border-radius:14px; padding:14px 22px; margin-bottom:20px; border:1px solid #e4ebe4; flex-wrap:wrap; }
+.finput { flex:1; min-width:160px; padding:10px 14px; border:1.5px solid #ccdacc; border-radius:10px; font-size:.9rem; font-family:Arial,sans-serif; color:#07713c; outline:none; background:#fff; }
+.finput:focus { border-color:#07713c; box-shadow:0 0 0 3px rgba(7,113,60,.1); }
+.finput::placeholder { color:#a8b8a8; font-style:italic; }
+.fselect { padding:10px 12px; border:1.5px solid #ccdacc; border-radius:10px; font-size:.88rem; font-family:Arial,sans-serif; color:#07713c; outline:none; background:#fff; cursor:pointer; flex-shrink:0; }
+.fselect:focus { border-color:#07713c; }
+.tc { background:#fff; border-radius:14px; border:1px solid #e4ebe4; box-shadow:0 1px 4px rgba(0,0,0,.04); overflow:hidden; }
+.tc-hdr { padding:16px 22px 12px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #eef4ee; }
+.tc-title { font-size:.92rem; font-weight:700; color:#07713c; }
+.tc-badge { font-size:.65rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; background:#ecfdf5; color:#07713c; border-radius:20px; padding:3px 10px; border:1px solid #d1fae5; }
+.tc-head { display:grid; padding:8px 22px; background:#f8faf8; border-bottom:1px solid #eef4ee; }
+.th { font-size:.64rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:#7a9a7a; }
+.tc-scroll { overflow-y:auto; max-height:520px; }
+.tc-scroll::-webkit-scrollbar { width:4px; }
+.tc-scroll::-webkit-scrollbar-thumb { background:#d1e8d1; border-radius:10px; }
+.tr { display:grid; padding:12px 22px; align-items:center; border-bottom:1px solid #f2f7f2; transition:background .15s; cursor:pointer; }
+.tr:last-child { border-bottom:none; }
+.tr:hover { background:#f8fdf8; }
+.rg { display:flex; align-items:center; gap:10px; min-width:0; }
+.av { width:36px; height:36px; border-radius:50%; flex-shrink:0; background:linear-gradient(135deg,#07713c,#5cb85c); color:#fff; font-weight:700; font-size:.84rem; display:flex; align-items:center; justify-content:center; }
+.rg-name { font-size:.88rem; font-weight:600; color:#07713c; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rg-sub  { font-size:.72rem; color:#8a9a8a; }
+.cell-room { font-weight:700; font-size:.86rem; color:#07713c; }
+.cell-date { font-size:.84rem; color:#6b7a6b; }
+.cell-amt  { font-weight:700; font-size:.86rem; color:#07713c; }
+.pill { display:inline-flex; padding:3px 10px; border-radius:20px; font-size:.72rem; font-weight:700; }
+.empty { padding:48px; text-align:center; color:#9aaa9a; font-size:.88rem; }
+.gdetail { background:#fff; border-radius:14px; border:1px solid #e4ebe4; box-shadow:0 1px 4px rgba(0,0,0,.04); overflow:hidden; align-self:start; position:sticky; top:0; }
+.gdh { background:linear-gradient(135deg,#07713c,#0a9150); padding:20px 22px; }
+.hist-item { border:1px solid #e4ebe4; border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+.hist-item:last-child { margin-bottom:0; }
+.detail-scroll { overflow-y:auto; max-height:460px; padding:20px 22px; }
+.detail-scroll::-webkit-scrollbar { width:4px; }
+.detail-scroll::-webkit-scrollbar-thumb { background:#d1e8d1; border-radius:10px; }
+`;
 
 export default function Guests() {
-  const [guests, setGuests]         = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [search, setSearch]         = useState("");
-  const [selected, setSelected]     = useState(null);
-  const [history, setHistory]       = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
+  // raw reservations — same as Dashboard
+  const [reservations,  setReservations]  = useState([]);
+  const [allYears,      setAllYears]      = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [search,        setSearch]        = useState("");
+  const [filterYear,    setFilterYear]    = useState("all");
+  const [filterStatus,  setFilterStatus]  = useState("all");
+  const [selected,      setSelected]      = useState(null);
+  const [guestHistory,  setGuestHistory]  = useState([]);
+  const [histYear,      setHistYear]      = useState("all");
+  const [loadingHist,   setLoadingHist]   = useState(false);
 
-  useEffect(() => { fetchGuests(); }, []);
+  useEffect(() => {
+    fetchAll();
+  }, []);
 
-  const fetchGuests = async () => {
+  const fetchAll = async () => {
     setLoading(true);
-    const { data } = await supabase.from("reservations").select("*").order("created_at", { ascending: false });
-    // Group by guest email or name to get unique guests
-    const map = {};
-    (data || []).forEach(r => {
-      const key = r.guest_email || r.guest_name;
-      if (!map[key]) {
-        map[key] = { name: r.guest_name, email: r.guest_email || "—", phone: r.guest_phone || "—", visits: 0, total_spent: 0, last_stay: r.check_out, status: r.status };
-      }
-      map[key].visits++;
-      map[key].total_spent += parseFloat(r.total_amount || 0);
-      if (new Date(r.check_out) > new Date(map[key].last_stay)) map[key].last_stay = r.check_out;
-      if (r.status === "checked_in") map[key].status = "checked_in";
-    });
-    setGuests(Object.values(map));
+    // Exact same query as Dashboard — no grouping, no map, just raw rows
+    const { data, error } = await supabase
+      .from("reservations")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Guests fetch error:", error);
+      setLoading(false);
+      return;
+    }
+
+    const rows = data || [];
+    setReservations(rows);
+
+    // Collect all years from check_in dates for the year filter dropdown
+    const years = [...new Set(
+      rows.map(r => r.check_in?.slice(0, 4)).filter(Boolean)
+    )].sort((a, b) => b - a);
+    setAllYears(years);
+
     setLoading(false);
   };
 
-  const openGuest = async (guest) => {
-    setSelected(guest);
-    setLoadingHistory(true);
-    const key = guest.email !== "—" ? "guest_email" : "guest_name";
-    const val = guest.email !== "—" ? guest.email : guest.name;
-    const { data } = await supabase.from("reservations").select("*").eq(key, val).order("check_in", { ascending: false });
-    setHistory(data || []);
-    setLoadingHistory(false);
+  // ── When a row is clicked, load all reservations for that guest ──
+  const openGuest = async (res) => {
+    setSelected(res);
+    setHistYear("all");
+    setLoadingHist(true);
+
+    // Match by email if available, else by name
+    let { data } = res.guest_email
+      ? await supabase.from("reservations").select("*").eq("guest_email", res.guest_email).order("check_in", { ascending: false })
+      : await supabase.from("reservations").select("*").eq("guest_name", res.guest_name).order("check_in", { ascending: false });
+
+    setGuestHistory(data || []);
+    setLoadingHist(false);
   };
 
-  const STATUS_CONFIG = {
-    confirmed:   { bg: "#e8f5e9", color: "#1b5e20", label: "Confirmed" },
-    checked_in:  { bg: "#e3f2fd", color: "#1565c0", label: "Checked In" },
-    checked_out: { bg: "#f3e5f5", color: "#6a1b9a", label: "Checked Out" },
-    cancelled:   { bg: "#fce4ec", color: "#c62828", label: "Cancelled" },
-    pending:     { bg: "#fff8e1", color: "#f57f17", label: "Pending" },
-  };
+  // ── FILTERED list — exactly like Dashboard's recent reservations but with filters ──
+  const filtered = reservations.filter(r => {
+    const matchSearch =
+      (r.guest_name  || "").toLowerCase().includes(search.toLowerCase()) ||
+      (r.guest_email || "").toLowerCase().includes(search.toLowerCase()) ||
+      (r.guest_phone || "").toLowerCase().includes(search.toLowerCase()) ||
+      (r.room_number || "").includes(search);
 
-  const filtered = guests.filter(g =>
-    g.name.toLowerCase().includes(search.toLowerCase()) ||
-    g.email.toLowerCase().includes(search.toLowerCase()) ||
-    g.phone.includes(search)
-  );
+    const matchYear   = filterYear   === "all" || (r.check_in || "").startsWith(filterYear);
+    const matchStatus = filterStatus === "all" || r.status === filterStatus;
+
+    return matchSearch && matchYear && matchStatus;
+  });
+
+  // History filtered by year inside detail panel
+  const filteredHist = histYear === "all"
+    ? guestHistory
+    : guestHistory.filter(r => (r.check_in || "").startsWith(histYear));
+
+  const histYears = [...new Set(
+    guestHistory.map(r => r.check_in?.slice(0, 4)).filter(Boolean)
+  )].sort((a, b) => b - a);
+
+  // Stat cards — same logic as before but based on raw reservations
+  const uniqueGuests    = new Set(reservations.map(r => r.guest_email || r.guest_name)).size;
+  const currentlyIn     = reservations.filter(r => r.status === "checked_in").length;
+  const returningEmails = Object.values(
+    reservations.reduce((acc, r) => {
+      const k = r.guest_email || r.guest_name;
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {})
+  ).filter(count => count > 1).length;
+
+  const cols = "2fr 1.4fr 1.1fr .8fr 1fr 1fr 1fr .5fr";
 
   return (
-    <div style={{ padding: "28px 32px", fontFamily: font, background: "#f0f2f0", minHeight: "100vh" }}>
-      {/* Header */}
-      <div style={{ marginBottom: "24px" }}>
-        <h2 style={{ margin: 0, fontSize: "1.6rem", fontWeight: "700", color: "#1a3c1a" }}>Guests</h2>
-        <p style={{ margin: "4px 0 0", color: "#888", fontSize: "0.9rem" }}>View guest profiles and stay history</p>
-      </div>
-
-      {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", marginBottom: "24px" }}>
-        {[
-          { label: "Total Guests",    value: guests.length,                                            icon: "👥", bg: "#e8f5e9", color: "#1b5e20" },
-          { label: "Currently Staying",value: guests.filter(g => g.status === "checked_in").length,   icon: "🏠", bg: "#e3f2fd", color: "#1565c0" },
-          { label: "Returning Guests", value: guests.filter(g => g.visits > 1).length,                icon: "⭐", bg: "#fff8e1", color: "#f57f17" },
-        ].map(({ label, value, icon, bg, color }) => (
-          <div key={label} style={{ background: bg, borderRadius: "14px", padding: "20px 24px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-              <span style={{ fontSize: "1.3rem" }}>{icon}</span>
-              <span style={{ fontSize: "0.85rem", color, fontWeight: "600" }}>{label}</span>
-            </div>
-            <div style={{ fontSize: "2rem", fontWeight: "700", color: "#1a1a1a" }}>{value}</div>
+    <>
+      <style>{CSS}</style>
+      <div className="page">
+        <div className="page-hdr">
+          <div>
+            <h2 className="page-title">Guests</h2>
+            <p className="page-sub">All guest reservations — {reservations.length} total records</p>
           </div>
-        ))}
-      </div>
-
-      {/* Search */}
-      <div style={{ background: "white", borderRadius: "14px", padding: "16px 24px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", marginBottom: "20px" }}>
-        <input type="text" placeholder="🔍  Search by name, email or phone..." value={search} onChange={e => setSearch(e.target.value)} style={inputStyle}
-          onFocus={e => e.target.style.borderColor="#2d6a2d"} onBlur={e => e.target.style.borderColor="#e8e8e8"} />
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: selected ? "1fr 380px" : "1fr", gap: "20px" }}>
-        {/* Guest Table */}
-        <div style={{ background: "white", borderRadius: "14px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: font }}>
-            <thead>
-              <tr style={{ background: "#f8f9fa", borderBottom: "2px solid #f0f0f0" }}>
-                {["Guest", "Email", "Phone", "Visits", "Total Spent", "Last Stay", "Status", ""].map(h => (
-                  <th key={h} style={{ padding: "14px 16px", textAlign: "left", fontSize: "0.78rem", color: "#888", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "#aaa" }}>Loading...</td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "#aaa" }}>No guests found.</td></tr>
-              ) : filtered.map((g, i) => {
-                const s = STATUS_CONFIG[g.status] || STATUS_CONFIG.confirmed;
-                const isActive = selected?.name === g.name;
-                return (
-                  <tr key={i} style={{ borderBottom: "1px solid #f5f5f5", background: isActive ? "#f0f7f0" : "white", cursor: "pointer" }}
-                    onClick={() => openGuest(g)}
-                    onMouseOver={e => { if (!isActive) e.currentTarget.style.background = "#fafafa"; }}
-                    onMouseOut={e => { if (!isActive) e.currentTarget.style.background = "white"; }}>
-                    <td style={{ padding: "14px 16px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "linear-gradient(135deg,#2d6a2d,#66bb6a)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: "700", fontSize: "0.85rem", flexShrink: 0 }}>
-                          {g.name.slice(0,2).toUpperCase()}
-                        </div>
-                        <span style={{ fontWeight: "600", fontSize: "0.92rem" }}>{g.name}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: "14px 16px", fontSize: "0.88rem", color: "#555" }}>{g.email}</td>
-                    <td style={{ padding: "14px 16px", fontSize: "0.88rem", color: "#555" }}>{g.phone}</td>
-                    <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                      <span style={{ background: g.visits > 1 ? "#fff8e1" : "#f5f5f5", color: g.visits > 1 ? "#f57f17" : "#888", padding: "3px 10px", borderRadius: "20px", fontSize: "0.8rem", fontWeight: "700" }}>
-                        {g.visits}x
-                      </span>
-                    </td>
-                    <td style={{ padding: "14px 16px", fontWeight: "700", color: "#1a3c1a" }}>₱{g.total_spent.toLocaleString()}</td>
-                    <td style={{ padding: "14px 16px", fontSize: "0.85rem", color: "#888" }}>{g.last_stay}</td>
-                    <td style={{ padding: "14px 16px" }}>
-                      <span style={{ padding: "4px 10px", borderRadius: "20px", fontSize: "0.76rem", fontWeight: "700", background: s.bg, color: s.color }}>{s.label}</span>
-                    </td>
-                    <td style={{ padding: "14px 16px" }}>
-                      <span style={{ color: "#2d6a2d", fontSize: "0.85rem", fontWeight: "700" }}>View →</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         </div>
 
-        {/* Guest Detail Panel */}
-        {selected && (
-          <div style={{ background: "white", borderRadius: "14px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", overflow: "hidden", alignSelf: "start" }}>
-            <div style={{ background: "linear-gradient(135deg,#1e4d1e,#2d6a2d)", padding: "20px 24px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                  <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: "700", fontSize: "1.1rem" }}>
-                    {selected.name.slice(0,2).toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ color: "white", fontWeight: "700", fontSize: "1rem" }}>{selected.name}</div>
-                    <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.8rem", marginTop: "2px" }}>{selected.visits} visit{selected.visits !== 1 ? "s" : ""} · ₱{selected.total_spent.toLocaleString()} total</div>
-                  </div>
-                </div>
-                <button onClick={() => setSelected(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", width: "28px", height: "28px", borderRadius: "50%", cursor: "pointer", color: "white", fontSize: "1rem" }}>×</button>
+        {/* STAT CARDS */}
+        <div className="sc-3">
+          {[
+            { lbl: "Total Guests",      val: uniqueGuests,  Icon: RiGroupLine, bg: "#e8f5e9", c: "#1b5e20" },
+            { lbl: "Currently Staying", val: currentlyIn,   Icon: RiHome4Line, bg: "#e3f2fd", c: "#1565c0" },
+            { lbl: "Returning Guests",  val: returningEmails,Icon: RiStarLine, bg: "#fff8e1", c: "#f57f17" },
+          ].map(({ lbl, val, Icon, bg, c }) => (
+            <div key={lbl} className="sc" style={{ background: bg }}>
+              <div className="sc-row">
+                <span className="sc-ico"><Icon size={20} color={c} /></span>
+                <span className="sc-lbl" style={{ color: c }}>{lbl}</span>
               </div>
+              <div className="sc-val">{val}</div>
             </div>
-            <div style={{ padding: "20px 24px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
-                {[["📧 Email", selected.email], ["📞 Phone", selected.phone], ["🏨 Visits", `${selected.visits}x`], ["💰 Total Spent", `₱${selected.total_spent.toLocaleString()}`]].map(([k,v]) => (
-                  <div key={k} style={{ background: "#f8f9fa", borderRadius: "8px", padding: "10px 14px" }}>
-                    <div style={{ fontSize: "0.75rem", color: "#aaa", marginBottom: "3px" }}>{k}</div>
-                    <div style={{ fontWeight: "600", fontSize: "0.88rem", color: "#222" }}>{v}</div>
-                  </div>
-                ))}
-              </div>
+          ))}
+        </div>
 
-              <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#2d6a2d", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px" }}>Stay History</div>
-              {loadingHistory ? (
-                <div style={{ textAlign: "center", padding: "20px", color: "#aaa", fontSize: "0.88rem" }}>Loading history...</div>
-              ) : history.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "20px", color: "#aaa", fontSize: "0.88rem" }}>No history found.</div>
-              ) : history.map(r => {
-                const s = STATUS_CONFIG[r.status] || STATUS_CONFIG.confirmed;
+        {/* FILTER BAR */}
+        <div className="fbar">
+          <input
+            className="finput"
+            type="text"
+            placeholder="Search by name, email, phone or room..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <select className="fselect" value={filterYear} onChange={e => setFilterYear(e.target.value)}>
+            <option value="all">All Years</option>
+            {allYears.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select className="fselect" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+            <option value="all">All Status</option>
+            {Object.entries(STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </div>
+
+        {/* MAIN GRID */}
+        <div style={{ display: "grid", gridTemplateColumns: selected ? "1fr 380px" : "1fr", gap: "20px" }}>
+
+          {/* RESERVATIONS TABLE — every row = one reservation/guest */}
+          <div className="tc">
+            <div className="tc-hdr">
+              <div className="tc-title">All Guests</div>
+              <span className="tc-badge">{filtered.length} of {reservations.length} records</span>
+            </div>
+            <div className="tc-head" style={{ gridTemplateColumns: cols }}>
+              {["Guest","Email","Phone","Room","Check-In","Check-Out","Status",""].map(h => (
+                <div key={h} className="th">{h}</div>
+              ))}
+            </div>
+            <div className="tc-scroll">
+              {loading ? (
+                <div className="empty">Loading...</div>
+              ) : filtered.length === 0 ? (
+                <div className="empty">No records found.</div>
+              ) : filtered.map(r => {
+                const s = STATUS_CFG[r.status] || STATUS_CFG.confirmed;
+                const isActive = selected?.id === r.id;
                 return (
-                  <div key={r.id} style={{ border: "1px solid #f0f0f0", borderRadius: "10px", padding: "12px 14px", marginBottom: "10px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                      <span style={{ fontWeight: "700", color: "#1a3c1a" }}>Room {r.room_number || "—"}</span>
-                      <span style={{ padding: "3px 10px", borderRadius: "20px", fontSize: "0.73rem", fontWeight: "700", background: s.bg, color: s.color }}>{s.label}</span>
+                  <div
+                    key={r.id}
+                    className="tr"
+                    style={{ gridTemplateColumns: cols, background: isActive ? "#ecfdf5" : undefined }}
+                    onClick={() => openGuest(r)}
+                  >
+                    <div className="rg">
+                      <div className="av">{(r.guest_name || "?").slice(0, 2).toUpperCase()}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="rg-name">{r.guest_name || "Unknown"}</div>
+                        {r.guest_phone && <div className="rg-sub">{r.guest_phone}</div>}
+                      </div>
                     </div>
-                    <div style={{ fontSize: "0.82rem", color: "#888" }}>{r.check_in} → {r.check_out}</div>
-                    <div style={{ fontWeight: "700", color: "#1a3c1a", fontSize: "0.88rem", marginTop: "4px" }}>₱{parseFloat(r.total_amount || 0).toLocaleString()}</div>
+                    <div style={{ fontSize: ".82rem", color: "#6b7a6b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {r.guest_email || "—"}
+                    </div>
+                    <div style={{ fontSize: ".82rem", color: "#6b7a6b" }}>
+                      {r.guest_phone || "—"}
+                    </div>
+                    <div className="cell-room">{r.room_number || "—"}</div>
+                    <div className="cell-date">{r.check_in || "—"}</div>
+                    <div className="cell-date">{r.check_out || "—"}</div>
+                    <div>
+                      <span className="pill" style={{ background: s.bg, color: s.color }}>{s.label}</span>
+                    </div>
+                    <div style={{ color: "#07713c", fontSize: ".82rem", fontWeight: "700" }}>View →</div>
                   </div>
-                  
                 );
               })}
             </div>
           </div>
-        )}
+
+          {/* GUEST DETAIL PANEL */}
+          {selected && (
+            <div className="gdetail">
+              <div className="gdh">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                    <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: "700", fontSize: "1.1rem" }}>
+                      {(selected.guest_name || "?").slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ color: "white", fontWeight: "700", fontSize: "1rem" }}>
+                        {selected.guest_name}
+                      </div>
+                      <div style={{ color: "rgba(255,255,255,.65)", fontSize: ".8rem", marginTop: "2px" }}>
+                        {guestHistory.length} reservation{guestHistory.length !== 1 ? "s" : ""} · ₱{guestHistory.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0).toLocaleString()} total
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelected(null)}
+                    style={{ background: "rgba(255,255,255,.15)", border: "none", width: "28px", height: "28px", borderRadius: "50%", cursor: "pointer", color: "white", fontSize: "1rem" }}
+                  >×</button>
+                </div>
+              </div>
+
+              <div className="detail-scroll">
+                {/* Info grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "18px" }}>
+                  {[
+                    ["Email",        selected.guest_email || "—"],
+                    ["Phone",        selected.guest_phone || "—"],
+                    ["Room",         `Room ${selected.room_number || "—"}`],
+                    ["Amount Paid",  `₱${parseFloat(selected.total_amount || 0).toLocaleString()}`],
+                    ["Check-In",     selected.check_in  || "—"],
+                    ["Check-Out",    selected.check_out || "—"],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{ background: "#f8faf8", borderRadius: "8px", padding: "10px 12px", border: "1px solid #e4ebe4" }}>
+                      <div style={{ fontSize: ".72rem", color: "#9aaa9a", marginBottom: "3px" }}>{k}</div>
+                      <div style={{ fontWeight: "600", fontSize: ".86rem", color: "#07713c" }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Stay history header + year filter */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                  <div style={{ fontSize: ".72rem", fontWeight: "700", color: "#07713c", textTransform: "uppercase", letterSpacing: ".08em" }}>
+                    All Stays {histYear !== "all" && `— ${histYear}`}
+                  </div>
+                  {histYears.length > 1 && (
+                    <select
+                      className="fselect"
+                      style={{ fontSize: ".76rem", padding: "5px 10px" }}
+                      value={histYear}
+                      onChange={e => setHistYear(e.target.value)}
+                    >
+                      <option value="all">All Years</option>
+                      {histYears.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  )}
+                </div>
+
+                {loadingHist ? (
+                  <div style={{ textAlign: "center", padding: "20px", color: "#9aaa9a", fontSize: ".88rem" }}>Loading...</div>
+                ) : filteredHist.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "20px", color: "#9aaa9a", fontSize: ".88rem" }}>
+                    {histYear !== "all" ? `No stays in ${histYear}.` : "No history found."}
+                  </div>
+                ) : filteredHist.map(r => {
+                  const s = STATUS_CFG[r.status] || STATUS_CFG.confirmed;
+                  const nights = (r.check_in && r.check_out)
+                    ? Math.max(0, Math.round((new Date(r.check_out) - new Date(r.check_in)) / 86400000))
+                    : 0;
+                  return (
+                    <div key={r.id} className="hist-item">
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                        <span style={{ fontWeight: "700", color: "#07713c" }}>Room {r.room_number || "—"}</span>
+                        <span className="pill" style={{ background: s.bg, color: s.color, fontSize: ".7rem" }}>{s.label}</span>
+                      </div>
+                      <div style={{ fontSize: ".82rem", color: "#8a9a8a" }}>{r.check_in} → {r.check_out}</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                        <span style={{ fontWeight: "700", color: "#07713c", fontSize: ".88rem" }}>
+                          ₱{parseFloat(r.total_amount || 0).toLocaleString()}
+                        </span>
+                        {nights > 0 && (
+                          <span style={{ fontSize: ".76rem", color: "#9aaa9a" }}>
+                            {nights} night{nights !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

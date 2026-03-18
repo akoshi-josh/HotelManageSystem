@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from "react";
+import {
+  RiGroupLine, RiCheckboxCircleLine, RiCloseCircleLine,
+  RiPencilLine, RiUserAddLine,
+} from "react-icons/ri";
 import supabase from "../supabaseClient";
 
 const CSS = `
@@ -10,14 +14,14 @@ const CSS = `
 .sc-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px; }
 .sc { border-radius:14px; padding:20px 22px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
 .sc-row { display:flex; align-items:center; gap:8px; margin-bottom:9px; }
-.sc-ico { font-size:1.2rem; }
+.sc-ico { display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .sc-lbl { font-size:.8rem; font-weight:700; text-transform:uppercase; }
 .sc-val { font-size:1.9rem; font-weight:700; color:#1a1a1a; }
 .fbar { display:flex; gap:14px; align-items:center; background:#fff; border-radius:14px; padding:14px 22px; margin-bottom:20px; border:1px solid #e4ebe4; }
 .finput { flex:1; padding:10px 14px; border:1.5px solid #ccdacc; border-radius:10px; font-size:.9rem; font-family:Arial,sans-serif; color:#07713c; outline:none; background:#fff; }
 .finput:focus { border-color:#07713c; box-shadow:0 0 0 3px rgba(7,113,60,.1); }
 .finput::placeholder { color:#a8b8a8; font-style:italic; }
-.btn-primary { padding:11px 22px; background:#07713c; color:#fff; border:none; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:700; font-family:Arial,sans-serif; box-shadow:0 4px 14px rgba(7,113,60,.28); white-space:nowrap; }
+.btn-primary { padding:11px 22px; background:#07713c; color:#fff; border:none; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:700; font-family:Arial,sans-serif; box-shadow:0 4px 14px rgba(7,113,60,.28); white-space:nowrap; display:inline-flex; align-items:center; gap:7px; }
 .btn-primary:hover { background:#05592f; }
 .tc { background:#fff; border-radius:14px; border:1px solid #e4ebe4; box-shadow:0 1px 4px rgba(0,0,0,.04); overflow:hidden; }
 .tc-hdr { padding:16px 22px 12px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #eef4ee; }
@@ -35,7 +39,7 @@ const CSS = `
 .av { width:36px; height:36px; border-radius:50%; flex-shrink:0; background:linear-gradient(135deg,#07713c,#5cb85c); color:#fff; font-weight:700; font-size:.84rem; display:flex; align-items:center; justify-content:center; }
 .rg-name { font-size:.88rem; font-weight:600; color:#07713c; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pill { display:inline-flex; padding:3px 10px; border-radius:20px; font-size:.72rem; font-weight:700; text-transform:capitalize; }
-.ba { display:inline-flex; align-items:center; gap:3px; padding:5px 11px; border-radius:7px; border:1.5px solid; font-size:.74rem; font-weight:700; font-family:Arial,sans-serif; cursor:pointer; transition:background .15s; }
+.ba { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:7px; border:1.5px solid; font-size:.74rem; font-weight:700; font-family:Arial,sans-serif; cursor:pointer; transition:background .15s; }
 .ba-edit { border-color:#fde68a; color:#92400e; background:#fffbeb; }
 .ba-edit:hover { background:#fef3c7; }
 .empty { padding:48px; text-align:center; color:#9aaa9a; font-size:.88rem; }
@@ -73,9 +77,7 @@ export default function Staff() {
   const [error,     setError]     = useState("");
   const [success,   setSuccess]   = useState("");
   const [search,    setSearch]    = useState("");
-  const [form, setForm] = useState({
-    full_name: "", email: "", password: "", role: "staff", status: "active",
-  });
+  const [form, setForm] = useState({ full_name: "", email: "", password: "", role: "staff", status: "active" });
 
   useEffect(() => { fetchStaff(); }, []);
 
@@ -140,6 +142,12 @@ export default function Staff() {
     s.role.toLowerCase().includes(search.toLowerCase())
   );
 
+  const STAT_CARDS = [
+    { lbl: "Total Staff", val: staffList.length,                                       Icon: RiGroupLine,          bg: "#e8f5e9", c: "#1b5e20" },
+    { lbl: "Active",      val: staffList.filter(s => s.status === "active").length,   Icon: RiCheckboxCircleLine, bg: "#e3f2fd", c: "#1565c0" },
+    { lbl: "Inactive",    val: staffList.filter(s => s.status === "inactive").length, Icon: RiCloseCircleLine,    bg: "#fff3e0", c: "#e65100" },
+  ];
+
   const cols = "2fr 2fr 1fr 1fr 1.2fr 1.5fr";
 
   return (
@@ -151,24 +159,25 @@ export default function Staff() {
             <h2 className="page-title">Staff Management</h2>
             <p className="page-sub">Manage staff and receptionist accounts</p>
           </div>
-          <button className="btn-primary" onClick={openAdd}>＋ Add Staff</button>
+          <button className="btn-primary" onClick={openAdd}>
+            <RiUserAddLine size={16} /> Add Staff
+          </button>
         </div>
 
         <div className="sc-3">
-          {[
-            { lbl: "Total Staff", val: staffList.length,                                       ico: "👥", bg: "#e8f5e9", c: "#1b5e20" },
-            { lbl: "Active",      val: staffList.filter(s => s.status === "active").length,   ico: "✅", bg: "#e3f2fd", c: "#1565c0" },
-            { lbl: "Inactive",    val: staffList.filter(s => s.status === "inactive").length, ico: "🔴", bg: "#fff3e0", c: "#e65100" },
-          ].map(({ lbl, val, ico, bg, c }) => (
+          {STAT_CARDS.map(({ lbl, val, Icon, bg, c }) => (
             <div key={lbl} className="sc" style={{ background: bg }}>
-              <div className="sc-row"><span className="sc-ico">{ico}</span><span className="sc-lbl" style={{ color: c }}>{lbl}</span></div>
+              <div className="sc-row">
+                <span className="sc-ico"><Icon size={20} color={c} /></span>
+                <span className="sc-lbl" style={{ color: c }}>{lbl}</span>
+              </div>
               <div className="sc-val">{val}</div>
             </div>
           ))}
         </div>
 
         <div className="fbar">
-          <input className="finput" type="text" placeholder="🔍  Search by name, email or role..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input className="finput" type="text" placeholder="Search by name, email or role..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
 
         <div className="tc">
@@ -177,9 +186,7 @@ export default function Staff() {
             <span className="tc-badge">{filtered.length} members</span>
           </div>
           <div className="tc-head" style={{ gridTemplateColumns: cols }}>
-            {["Name","Email","Role","Status","Created","Actions"].map(h => (
-              <div key={h} className="th">{h}</div>
-            ))}
+            {["Name","Email","Role","Status","Created","Actions"].map(h => <div key={h} className="th">{h}</div>)}
           </div>
           <div className="tc-scroll">
             {loading ? (
@@ -205,13 +212,18 @@ export default function Staff() {
                 </div>
                 <div style={{ fontSize: ".82rem", color: "#8a9a8a" }}>{new Date(s.created_at).toLocaleDateString()}</div>
                 <div style={{ display: "flex", gap: "6px" }}>
-                  <button className="ba ba-edit" onClick={() => openEdit(s)}>✏️ Edit</button>
+                  <button className="ba ba-edit" onClick={() => openEdit(s)}>
+                    <RiPencilLine size={13} /> Edit
+                  </button>
                   <button
                     className="ba"
                     style={{ borderColor: s.status === "active" ? "#fca5a5" : "#a5d6a7", color: s.status === "active" ? "#dc2626" : "#1b5e20", background: "#fff" }}
                     onClick={() => toggleStatus(s)}
                   >
-                    {s.status === "active" ? "🔴 Deactivate" : "✅ Activate"}
+                    {s.status === "active"
+                      ? <><RiCloseCircleLine size={13} /> Deactivate</>
+                      : <><RiCheckboxCircleLine size={13} /> Activate</>
+                    }
                   </button>
                 </div>
               </div>
@@ -225,7 +237,7 @@ export default function Staff() {
           <div className="mb" style={{ maxWidth: "460px" }} onClick={e => e.stopPropagation()}>
             <div className="mh">
               <div>
-                <p className="mh-title">{editUser ? "✏️ Edit Staff Account" : "👤 Add New Staff"}</p>
+                <p className="mh-title">{editUser ? "Edit Staff Account" : "Add New Staff"}</p>
                 <p className="mh-sub">{editUser ? "Update staff details" : "Create a new staff account"}</p>
               </div>
               <button className="mx" onClick={() => setShowModal(false)}>×</button>
@@ -233,59 +245,28 @@ export default function Staff() {
             <div className="mbody">
               {error   && <div className="alert-err">✕ {error}</div>}
               {success && <div className="alert-ok">✓ {success}</div>}
-
               <div className="sc2">
-                <div className="sc2-title">👤 Account Details</div>
+                <div className="sc2-title">Account Details</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                  <div>
-                    <label className="flabel">Full Name</label>
-                    <input className="fi" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} placeholder="e.g. Juan Dela Cruz" />
-                  </div>
+                  <div><label className="flabel">Full Name</label><input className="fi" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} placeholder="e.g. Juan Dela Cruz" /></div>
                   <div>
                     <label className="flabel">Email Address</label>
-                    <input
-                      type="email" className="fi"
-                      value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-                      placeholder="e.g. juan@hotel.com"
-                      disabled={!!editUser}
-                      style={editUser ? { background: "#f5f8f5", color: "#9aaa9a" } : {}}
-                    />
+                    <input type="email" className="fi" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="e.g. juan@hotel.com" disabled={!!editUser} style={editUser ? { background: "#f5f8f5", color: "#9aaa9a" } : {}} />
                   </div>
-                  {!editUser && (
-                    <div>
-                      <label className="flabel">Password</label>
-                      <input type="password" className="fi" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Min. 6 characters" />
-                    </div>
-                  )}
+                  {!editUser && <div><label className="flabel">Password</label><input type="password" className="fi" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Min. 6 characters" /></div>}
                 </div>
               </div>
-
               <div className="sc2">
-                <div className="sc2-title">⚙️ Role & Status</div>
+                <div className="sc2-title">Role & Status</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                  <div>
-                    <label className="flabel">Role</label>
-                    <select className="fi" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={{ cursor: "pointer" }}>
-                      <option value="staff">Staff</option>
-                      <option value="receptionist">Receptionist</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="flabel">Status</label>
-                    <select className="fi" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={{ cursor: "pointer" }}>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                  </div>
+                  <div><label className="flabel">Role</label><select className="fi" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={{ cursor: "pointer" }}><option value="staff">Staff</option><option value="receptionist">Receptionist</option><option value="admin">Admin</option></select></div>
+                  <div><label className="flabel">Status</label><select className="fi" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={{ cursor: "pointer" }}><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
                 </div>
               </div>
             </div>
             <div className="mfoot">
               <button className="btn-cancel" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn-confirm" onClick={handleSave} disabled={saving}>
-                {saving ? "Saving…" : editUser ? "Save Changes" : "Create Account"}
-              </button>
+              <button className="btn-confirm" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : editUser ? "Save Changes" : "Create Account"}</button>
             </div>
           </div>
         </div>
