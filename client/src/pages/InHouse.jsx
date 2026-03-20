@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 import {
   RiHotelBedLine, RiUserLine, RiCalendarLine, RiAddCircleLine,
   RiMoneyDollarCircleLine, RiStickyNoteLine, RiTimeLine,
-  RiCheckboxCircleLine, RiDeleteBinLine, RiEyeLine,
-  RiArrowRightLine, RiLoginBoxLine,
+  RiCheckboxCircleLine, RiDeleteBinLine, RiEyeLine, RiLoginBoxLine,
+  RiCalendar2Line,
 } from "react-icons/ri";
 import supabase from "../supabaseClient";
 import { logActivity } from "../logger";
@@ -94,9 +94,17 @@ const CSS = `
   .mh-meta { width:100%; justify-content:flex-start; }
   .info-grid-3 { grid-template-columns:1fr 1fr; }
 }
+.extend-box { background:#e3f2fd; border:1.5px solid #90caf9; border-radius:10px; padding:13px 15px; margin-top:10px; }
+.extend-title { font-size:.68rem; font-weight:700; color:#1565c0; text-transform:uppercase; letter-spacing:.08em; display:flex; align-items:center; gap:5px; margin-bottom:10px; }
+.extend-row { display:flex; gap:8px; align-items:center; }
+.extend-input { flex:1; padding:8px 12px; border:1.5px solid #90caf9; border-radius:8px; font-size:.86rem; font-family:Arial,sans-serif; outline:none; color:#333; background:#fff; }
+.extend-input:focus { border-color:#1565c0; box-shadow:0 0 0 3px rgba(21,101,192,.1); }
+.extend-btn { padding:8px 16px; background:#1565c0; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:700; font-size:.82rem; font-family:Arial,sans-serif; white-space:nowrap; display:inline-flex; align-items:center; gap:5px; }
+.extend-btn:disabled { background:#aaa; cursor:not-allowed; }
+.open-stay-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; background:#fff8e1; color:#f57f17; border-radius:10px; font-size:.72rem; font-weight:700; border:1px solid #ffe082; }
 `;
 
-export default function InHouse() {
+export default function InHouse({ highlightId }) {
   const [guests,   setGuests]   = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [search,   setSearch]   = useState("");
@@ -104,6 +112,8 @@ export default function InHouse() {
   const [reqName,  setReqName]  = useState("");
   const [reqAmt,   setReqAmt]   = useState("");
   const [saving,   setSaving]   = useState(false);
+  const [extending,  setExtending]  = useState(false); // is saving extension
+  const [extDate,    setExtDate]    = useState("");     // new checkout date input
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -133,7 +143,7 @@ export default function InHouse() {
   };
 
   const nightsStayed = (checkIn) => Math.max(1, Math.floor((new Date() - new Date(checkIn)) / 86400000));
-  const nightsLeft   = (checkOut) => Math.max(0, Math.ceil((new Date(checkOut) - new Date()) / 86400000));
+  const nightsLeft   = (checkOut) => checkOut ? Math.max(0, Math.ceil((new Date(checkOut) - new Date()) / 86400000)) : null;
 
   const handleAddCharge = async () => {
     if (!reqName.trim() || !reqAmt || !selected) return;
@@ -159,7 +169,35 @@ export default function InHouse() {
     fetchGuests();
   };
 
-  const openModal = (res) => { setSelected(res); setReqName(""); setReqAmt(""); };
+  const handleExtendStay = async () => {
+    if (!selected || !extDate) return;
+    if (selected.check_in && new Date(extDate) <= new Date(selected.check_in)) return;
+    setExtending(true);
+    // Recalculate total based on new dates
+    const checkIn  = selected.check_in;
+    const checkOut = extDate;
+    const nights   = checkIn && checkOut
+      ? Math.max(1, Math.ceil((new Date(checkOut) - new Date(checkIn)) / 86400000))
+      : 1;
+    const pricePerNight = parseFloat(selected.total_amount || 0) /
+      Math.max(1, selected.check_out
+        ? Math.ceil((new Date(selected.check_out) - new Date(selected.check_in)) / 86400000)
+        : 1);
+    const newTotal = nights * pricePerNight;
+
+    await supabase.from("reservations")
+      .update({ check_out: extDate, total_amount: newTotal })
+      .eq("id", selected.id);
+
+    // Refresh selected
+    const { data } = await supabase.from("reservations").select("*, rooms(type, floor)").eq("id", selected.id).single();
+    setSelected(data);
+    setExtDate("");
+    setExtending(false);
+    fetchGuests();
+  };
+
+  const openModal = (res) => { setSelected(res); setReqName(""); setReqAmt(""); setExtDate(""); };
   const closeModal = () => setSelected(null);
 
   const filtered = guests.filter(g =>
@@ -222,15 +260,17 @@ export default function InHouse() {
             ) : filtered.map(res => {
               const isCheckingOutToday = res.check_out === today;
               return (
-                <div key={res.id} className="ih-tr">
+                <div key={res.id} className="ih-tr" style={{ background: res.id === highlightId ? "#fffde7" : undefined, outline: res.id === highlightId ? "2px solid #f59e0b" : "none", transition: "all 0.3s" }}>
                   <div className="ih-td"><span className="room-badge">{res.room_number}</span></div>
                   <div className="ih-td guest-name">{res.guest_name}</div>
                   <div className="ih-td"><span className="floor-badge">{res.rooms?.floor ?? "—"}</span></div>
                   <div className="ih-td"><span className="date-val">{res.check_in}</span></div>
                   <div className="ih-td">
-                    {isCheckingOutToday
-                      ? <span className="checkout-today">Today</span>
-                      : <span className="date-val">{res.check_out}</span>
+                    {!res.check_out
+                      ? <span style={{ fontSize: ".78rem", color: "#f57f17", fontWeight: "700", background: "#fff8e1", padding: "3px 8px", borderRadius: "8px", border: "1px solid #ffe082" }}>Open</span>
+                      : isCheckingOutToday
+                        ? <span className="checkout-today">Today</span>
+                        : <span className="date-val">{res.check_out}</span>
                     }
                   </div>
                   <div className="ih-td"><span className="rate-val">₱{parseFloat(res.total_amount||0).toLocaleString()}</span></div>
@@ -252,7 +292,7 @@ export default function InHouse() {
         const total   = calcTotal(selected);
         const stayed  = nightsStayed(selected.check_in);
         const left    = nightsLeft(selected.check_out);
-        const isToday = selected.check_out === today;
+        const isToday = selected.check_out ? selected.check_out === today : false;
 
         return (
           <div className="mo" onClick={closeModal}>
@@ -271,8 +311,10 @@ export default function InHouse() {
                     <div className="mh-nights-lbl">night{stayed !== 1 ? "s" : ""} stayed</div>
                   </div>
                   <div className="mh-badge">
-                    <div className="mh-nights-num" style={{ color: left === 0 ? "#ffd54f" : "#fff" }}>{left === 0 ? "Today" : `${left}d`}</div>
-                    <div className="mh-nights-lbl">{left === 0 ? "checkout" : "days left"}</div>
+                    <div className="mh-nights-num" style={{ color: left === 0 ? "#ffd54f" : "#fff" }}>
+                      {left === null ? "∞" : left === 0 ? "Today" : `${left}d`}
+                    </div>
+                    <div className="mh-nights-lbl">{left === null ? "open stay" : left === 0 ? "checkout" : "days left"}</div>
                   </div>
                   <button className="mx" onClick={closeModal}>×</button>
                 </div>
@@ -318,7 +360,8 @@ export default function InHouse() {
                         <div className="info-cell">
                           <div className="info-lbl"><RiTimeLine size={10} />Days Left</div>
                           <div className="info-val" style={{ color: left === 0 ? "#e65100" : "#07713c", fontSize: "1.1rem" }}>
-                            {left === 0 ? "Today" : `${left}d`}
+                            {!selected.check_out ? <span className="open-stay-badge">Open Stay</span>
+                              : left === 0 ? "Today" : `${left}d`}
                           </div>
                         </div>
                         <div className="info-cell">
@@ -333,6 +376,36 @@ export default function InHouse() {
                             ₱{parseFloat(selected.total_amount||0).toLocaleString()}
                           </div>
                         </div>
+                      </div>
+
+                      {/* Extend Stay */}
+                      <div className="extend-box">
+                        <div className="extend-title"><RiCalendar2Line size={13} />
+                          {selected.check_out ? "Extend Stay" : "Set Check-Out Date"}
+                        </div>
+                        <div className="extend-row">
+                          <input
+                            type="date"
+                            className="extend-input"
+                            value={extDate}
+                            min={selected.check_in || today}
+                            onChange={e => setExtDate(e.target.value)}
+                            placeholder="Select new date"
+                          />
+                          <button
+                            className="extend-btn"
+                            onClick={handleExtendStay}
+                            disabled={extending || !extDate}
+                          >
+                            <RiCalendar2Line size={13} />
+                            {extending ? "Saving..." : selected.check_out ? "Extend" : "Set Date"}
+                          </button>
+                        </div>
+                        {selected.check_out && (
+                          <div style={{ fontSize: ".74rem", color: "#1565c0", marginTop: "6px" }}>
+                            Current: {selected.check_out}
+                          </div>
+                        )}
                       </div>
                     </div>
 

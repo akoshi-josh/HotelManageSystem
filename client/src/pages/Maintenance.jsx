@@ -54,31 +54,42 @@ const CSS = `
 .mn-btn-inspect:hover { background: #ffcdd2; }
 .mn-btn-clear { background: #ecfdf5; color: #07713c; flex: 1; border: 1.5px solid #a7f3d0; }
 .mn-btn-clear:hover { background: #d1fae5; }
-.insp-mo { position:fixed; inset:0; z-index:999; display:flex; align-items:flex-start; justify-content:center; background:rgba(0,0,0,.50); backdrop-filter:blur(2px); padding:20px; overflow-y:auto; }
-.insp-mb { background:#f4f6f0; border-radius:20px; width:100%; max-width:500px; box-shadow:0 20px 60px rgba(0,0,0,.22); margin:auto; overflow:hidden; }
-.insp-mh { padding:18px 24px; background:linear-gradient(135deg,#c62828,#e53935); display:flex; justify-content:space-between; align-items:center; }
+.insp-mo { position:fixed; inset:0; z-index:999; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.55); backdrop-filter:blur(3px); padding:20px; overflow-y:auto; }
+.insp-mb { background:#f4f6f0; border-radius:20px; width:100%; max-width:720px; display:flex; flex-direction:column; box-shadow:0 24px 80px rgba(0,0,0,.28); max-height:90vh; overflow:hidden; }
+.insp-mh { padding:20px 26px; background:linear-gradient(135deg,#c62828,#e53935); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+.insp-mh-left { display:flex; align-items:center; gap:14px; }
+.insp-mh-info { }
 .insp-mh-title { color:#fff; font-size:1rem; font-weight:700; margin:0; }
 .insp-mh-sub   { color:rgba(255,255,255,.7); font-size:.8rem; margin:3px 0 0; }
-.insp-mx { background:rgba(255,255,255,.15); border:none; width:32px; height:32px; border-radius:50%; cursor:pointer; color:#fff; font-size:1.2rem; display:flex; align-items:center; justify-content:center; }
+.insp-mh-room  { background:rgba(255,255,255,.15); border-radius:12px; padding:8px 16px; text-align:center; flex-shrink:0; }
+.insp-mh-room-num { font-size:1.8rem; font-weight:700; color:#fff; line-height:1; }
+.insp-mh-room-lbl { font-size:.6rem; color:rgba(255,255,255,.65); text-transform:uppercase; }
+.insp-mx { background:rgba(255,255,255,.15); border:none; width:32px; height:32px; border-radius:50%; cursor:pointer; color:#fff; font-size:1.2rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .insp-mx:hover { background:rgba(255,255,255,.28); }
-.insp-body { padding:20px 24px; }
-.insp-sec { background:#fff; border-radius:12px; padding:14px 16px; margin-bottom:12px; border:1px solid #e4ebe4; }
+.insp-body { padding:20px 26px; overflow-y:auto; flex:1; }
+.insp-two-col { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.insp-sec { background:#fff; border-radius:12px; padding:14px 16px; margin-bottom:0; border:1px solid #e4ebe4; height:100%; }
 .insp-sec-title { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
 .insp-fi { width:100%; padding:9px 12px; border:1.5px solid #ccdacc; border-radius:9px; font-size:.88rem; font-family:Arial,sans-serif; outline:none; background:#fff; color:#333; box-sizing:border-box; transition:border-color .2s; }
 .insp-fi:focus { border-color:#c62828; box-shadow:0 0 0 3px rgba(198,40,40,.1); }
 .insp-fi::placeholder { color:#a8b8a8; font-style:italic; }
 .insp-charge-row { display:flex; justify-content:space-between; align-items:center; padding:7px 11px; background:#fff5f5; border:1px solid #ffcdd2; border-radius:7px; margin-bottom:5px; }
-.insp-add-row { display:flex; gap:7px; align-items:center; margin-top:8px; }
-.insp-add-fi { flex:1; padding:8px 11px; border:1.5px dashed #ef9a9a; border-radius:8px; font-size:.84rem; outline:none; font-family:Arial,sans-serif; color:#333; }
+.insp-charges-list { max-height:160px; overflow-y:auto; margin-bottom:8px; }
+.insp-add-row { display:flex; gap:7px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+.insp-add-fi { flex:1; min-width:100px; padding:8px 11px; border:1.5px dashed #ef9a9a; border-radius:8px; font-size:.84rem; outline:none; font-family:Arial,sans-serif; color:#333; }
 .insp-add-fi:focus { border-color:#c62828; }
 .insp-add-fi::placeholder { color:#a8b8a8; font-style:italic; }
-.insp-add-btn { padding:8px 14px; background:#c62828; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:700; font-size:.82rem; font-family:Arial,sans-serif; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; }
+.insp-add-btn { padding:8px 14px; background:#c62828; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:700; font-size:.82rem; font-family:Arial,sans-serif; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; flex-shrink:0; }
 .insp-add-btn:disabled { background:#aaa; cursor:not-allowed; }
-.insp-foot { padding:14px 24px; border-top:1px solid #e4ebe4; display:flex; gap:10px; }
+.insp-foot { padding:14px 26px; border-top:1px solid #e4ebe4; display:flex; gap:10px; flex-shrink:0; }
 .insp-btn-cancel  { flex:1; padding:11px; background:#fff; border:1.5px solid #ccdacc; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:600; color:#555; font-family:Arial,sans-serif; }
 .insp-btn-damage  { flex:2; padding:11px; background:#c62828; border:none; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:700; color:#fff; font-family:Arial,sans-serif; display:flex; align-items:center; justify-content:center; gap:6px; }
 .insp-btn-clear   { flex:2; padding:11px; background:#07713c; border:none; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:700; color:#fff; font-family:Arial,sans-serif; display:flex; align-items:center; justify-content:center; gap:6px; }
 .insp-btn-damage:disabled, .insp-btn-clear:disabled { background:#aaa; cursor:not-allowed; }
+@media (max-width:600px) {
+  .insp-two-col { grid-template-columns:1fr; }
+  .insp-mb { max-width:100%; border-radius:16px; }
+}
 `;
 
 const TASK_STATUS = {
@@ -92,18 +103,18 @@ const TASK_TYPE = {
   inspection:    { label: "Room Inspection Request",  Icon: RiSearchLine,    color: "#c62828", bg: "#fce4ec" },
 };
 const TABS = [
-  { key: "all",                label: "All Tasks",      Icon: RiListCheck2 },
   { key: "pending_inprogress", label: "Needs Cleaning", Icon: RiToolsLine },
   { key: "inspection",         label: "Inspections",    Icon: RiSearchLine },
   { key: "pre_checkin",        label: "Pre Check-In",   Icon: RiLoginBoxLine },
   { key: "post_checkout",      label: "Post Check-Out", Icon: RiLogoutBoxLine },
+  { key: "all",                label: "All Tasks",      Icon: RiListCheck2 },
   { key: "done",               label: "Done",           Icon: RiCheckDoubleLine },
 ];
 
 export default function Maintenance({ user }) {
   const [tasks,      setTasks]      = useState([]);
   const [loading,    setLoading]    = useState(true);
-  const [filter,     setFilter]     = useState("all");
+  const [filter,     setFilter]     = useState("pending_inprogress");
   const [updating,   setUpdating]   = useState(null);
   const [successMsg, setSuccessMsg] = useState("");
   const [inspModal,  setInspModal]  = useState(null);  // task being inspected
@@ -201,8 +212,13 @@ export default function Maintenance({ user }) {
   };
 
   const addInspCharge = () => {
-    if (!inspChgName.trim() || !inspChgAmt) return;
-    setInspCharges(prev => [...prev, { name: inspChgName.trim(), amount: parseFloat(inspChgAmt) }]);
+    if (!inspChgName.trim()) return;
+    // Amount is optional — 0 means "TBD / to be assessed"
+    setInspCharges(prev => [...prev, {
+      name:   inspChgName.trim(),
+      amount: inspChgAmt ? parseFloat(inspChgAmt) : 0,
+      tbd:    !inspChgAmt, // flag as "to be determined"
+    }]);
     setInspChgName(""); setInspChgAmt("");
   };
 
@@ -215,6 +231,21 @@ export default function Maintenance({ user }) {
       inspection_charges: JSON.stringify(outcome === "has_damage" ? inspCharges : []),
     }).eq("id", inspModal.res_id);
     setTasks(prev => prev.filter(t => t.id !== inspModal.id));
+    // Notify receptionist/staff of inspection result
+    supabase.from("notifications").insert({
+      type:        outcome === "cleared" ? "inspection_cleared" : "inspection_damage",
+      title:       outcome === "cleared"
+        ? `Room ${inspModal.room_number} — Cleared, No Damage`
+        : `Room ${inspModal.room_number} — Damage Found`,
+      message:     outcome === "cleared"
+        ? `Room ${inspModal.room_number} inspected. No damage found. Guest: ${inspModal.guest_name}. Ready for check-out.`
+        : `Damage reported in Room ${inspModal.room_number}. Guest: ${inspModal.guest_name}. Charges: ₱${inspCharges.filter(c=>!c.tbd).reduce((s,c)=>s+parseFloat(c.amount),0).toLocaleString()}${inspCharges.some(c=>c.tbd)?" + TBD":""}.`,
+      entity_type: "reservation",
+      entity_id:   inspModal.res_id || "",
+      room_number: inspModal.room_number,
+      guest_name:  inspModal.guest_name,
+      nav_target:  "Check-Out",
+    });
     setSuccessMsg(outcome === "cleared"
       ? `Room ${inspModal.room_number} — cleared, no damage.`
       : `Room ${inspModal.room_number} — damage reported.`
@@ -247,6 +278,18 @@ export default function Maintenance({ user }) {
     if (newStatus === "done") {
       setSuccessMsg(`Room ${task.room_number} marked as clean!`);
       setTimeout(() => setSuccessMsg(""), 2500);
+      // Push notification to staff/admin
+      const typeLabel = task.type === "pre_checkin" ? "Pre Check-In" : "Post Check-Out";
+      supabase.from("notifications").insert({
+        type:        "cleaning_done",
+        title:       `Room ${task.room_number} — Cleaning Done`,
+        message:     `${typeLabel} cleaning completed. Guest: ${task.guest_name}.`,
+        entity_type: "reservation",
+        entity_id:   task.res_id || "",
+        room_number: task.room_number,
+        guest_name:  task.guest_name,
+        nav_target:  task.type === "post_checkout" ? "Check-Out" : "Check-In",
+      });
     }
   };
 
@@ -397,70 +440,112 @@ export default function Maintenance({ user }) {
       {inspModal && (
         <div className="insp-mo" onClick={() => setInspModal(null)}>
           <div className="insp-mb" onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
             <div className="insp-mh">
-              <div>
-                <p className="insp-mh-title">Room Inspection — Room {inspModal.room_number}</p>
-                <p className="insp-mh-sub">Guest: {inspModal.guest_name}</p>
+              <div className="insp-mh-left">
+                <div className="insp-mh-room">
+                  <div className="insp-mh-room-num">{inspModal.room_number}</div>
+                  <div className="insp-mh-room-lbl">Room</div>
+                </div>
+                <div className="insp-mh-info">
+                  <p className="insp-mh-title">Room Inspection</p>
+                  <p className="insp-mh-sub">Guest: {inspModal.guest_name}</p>
+                  {inspModal.check_in && (
+                    <p style={{ color: "rgba(255,255,255,.6)", fontSize: ".75rem", marginTop: "2px" }}>
+                      {inspModal.check_in}{inspModal.check_out ? ` → ${inspModal.check_out}` : " (Open Stay)"}
+                    </p>
+                  )}
+                </div>
               </div>
               <button className="insp-mx" onClick={() => setInspModal(null)}>×</button>
             </div>
+
+            {/* Two-column body */}
             <div className="insp-body">
-              {/* Notes */}
-              <div className="insp-sec">
-                <div className="insp-sec-title" style={{ color: "#c62828" }}>
-                  <RiStickyNoteLine size={13} />Inspection Notes
-                </div>
-                <textarea
-                  className="insp-fi"
-                  rows={3}
-                  style={{ resize: "vertical" }}
-                  placeholder="Describe room condition, any issues found..."
-                  value={inspNotes}
-                  onChange={e => setInspNotes(e.target.value)}
-                />
-              </div>
+              <div className="insp-two-col">
 
-              {/* Damage Charges */}
-              <div className="insp-sec">
-                <div className="insp-sec-title" style={{ color: "#c62828" }}>
-                  <RiMoneyDollarCircleLine size={13} />Damage Charges (Optional)
-                </div>
-                <div style={{ fontSize: ".78rem", color: "#8a9a8a", marginBottom: "10px" }}>
-                  Add items if damage was found. Leave empty if room is in good condition.
-                </div>
-
-                {inspCharges.length > 0 && (
-                  <div style={{ marginBottom: "8px" }}>
-                    {inspCharges.map((c, i) => (
-                      <div key={i} className="insp-charge-row">
-                        <span style={{ fontSize: ".83rem", color: "#333" }}>{c.name}</span>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span style={{ fontWeight: "700", color: "#c62828", fontSize: ".83rem" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
-                          <button onClick={() => setInspCharges(prev => prev.filter((_, j) => j !== i))}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "#e53935", display: "flex", alignItems: "center", padding: "2px 3px" }}>
-                            <RiDeleteBinLine size={13} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 11px", fontWeight: "700", fontSize: ".85rem", background: "#fff", borderRadius: "7px", marginTop: "4px" }}>
-                      <span style={{ color: "#555" }}>Total Damage Charges</span>
-                      <span style={{ color: "#c62828" }}>₱{inspCharges.reduce((s,c)=>s+parseFloat(c.amount),0).toLocaleString()}</span>
-                    </div>
+                {/* LEFT — Notes */}
+                <div className="insp-sec">
+                  <div className="insp-sec-title" style={{ color: "#c62828" }}>
+                    <RiStickyNoteLine size={13} />Inspection Notes
                   </div>
-                )}
+                  <div style={{ fontSize: ".78rem", color: "#8a9a8a", marginBottom: "10px" }}>
+                    Describe the room condition. Required to report damage.
+                  </div>
+                  <textarea
+                    className="insp-fi"
+                    rows={8}
+                    style={{ resize: "vertical" }}
+                    placeholder="Describe room condition, any issues found (e.g. broken furniture, stained linen, missing items)..."
+                    value={inspNotes}
+                    onChange={e => setInspNotes(e.target.value)}
+                  />
+                </div>
 
-                <div className="insp-add-row">
-                  <input className="insp-add-fi" value={inspChgName} onChange={e => setInspChgName(e.target.value)}
-                    placeholder="e.g. Broken mirror, Stained bedsheet..." onKeyDown={e => e.key === "Enter" && addInspCharge()} />
-                  <input type="number" className="insp-add-fi" style={{ flex: "0 0 100px" }} value={inspChgAmt}
-                    onChange={e => setInspChgAmt(e.target.value)} placeholder="₱ Amount" onKeyDown={e => e.key === "Enter" && addInspCharge()} />
-                  <button className="insp-add-btn" onClick={addInspCharge} disabled={!inspChgName.trim() || !inspChgAmt}>
-                    <RiAddLine size={13} />Add
-                  </button>
+                {/* RIGHT — Damage Charges */}
+                <div className="insp-sec">
+                  <div className="insp-sec-title" style={{ color: "#c62828" }}>
+                    <RiMoneyDollarCircleLine size={13} />Damage Charges
+                    <span style={{ fontWeight: "400", color: "#aaa", fontSize: ".7rem", textTransform: "none", letterSpacing: 0 }}>(optional)</span>
+                  </div>
+                  <div style={{ fontSize: ".78rem", color: "#8a9a8a", marginBottom: "10px" }}>
+                    Add items if damage was found. Leave empty if room is clean.
+                  </div>
+
+                  {inspCharges.length > 0 ? (
+                    <div className="insp-charges-list">
+                      {inspCharges.map((c, i) => (
+                        <div key={i} className="insp-charge-row">
+                          <span style={{ fontSize: ".83rem", color: "#333", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0, marginLeft: "8px" }}>
+                            {c.tbd
+                              ? <span style={{ fontSize: ".72rem", fontWeight: "700", color: "#f57f17", background: "#fff8e1", padding: "2px 7px", borderRadius: "8px", border: "1px solid #ffe082" }}>TBD</span>
+                              : <span style={{ fontWeight: "700", color: "#c62828", fontSize: ".83rem" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                            }
+                            <button onClick={() => setInspCharges(prev => prev.filter((_, j) => j !== i))}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "#e53935", display: "flex", alignItems: "center", padding: "2px 3px" }}>
+                              <RiDeleteBinLine size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 11px", fontWeight: "700", fontSize: ".85rem", background: "#fce4ec", borderRadius: "7px", marginTop: "6px", border: "1px solid #ffcdd2" }}>
+                        <span style={{ color: "#555" }}>
+                          Total
+                          {inspCharges.some(c => c.tbd) && (
+                            <span style={{ fontWeight: "400", fontSize: ".72rem", color: "#f57f17", marginLeft: "6px" }}>
+                              (some items TBD)
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ color: "#c62828" }}>
+                          ₱{inspCharges.filter(c => !c.tbd).reduce((s,c)=>s+parseFloat(c.amount),0).toLocaleString()}
+                          {inspCharges.some(c => c.tbd) && <span style={{ fontSize: ".75rem", color: "#f57f17" }}> + TBD</span>}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ color: "#aaa", fontSize: ".82rem", fontStyle: "italic", marginBottom: "10px" }}>No charges added yet.</div>
+                  )}
+
+                  <div className="insp-add-row">
+                    <input className="insp-add-fi" value={inspChgName} onChange={e => setInspChgName(e.target.value)}
+                      placeholder="e.g. Broken mirror..." onKeyDown={e => e.key === "Enter" && addInspCharge()} />
+                    <input type="number" className="insp-add-fi" style={{ flex: "0 0 90px", minWidth: "80px" }} value={inspChgAmt}
+                      onChange={e => setInspChgAmt(e.target.value)} placeholder="₱ (opt.)" onKeyDown={e => e.key === "Enter" && addInspCharge()} />
+                    <button className="insp-add-btn" onClick={addInspCharge} disabled={!inspChgName.trim()}>
+                      <RiAddLine size={13} />Add
+                    </button>
+                  </div>
+                  <div style={{ fontSize: ".73rem", color: "#aaa", marginTop: "6px" }}>
+                    💡 Price is optional — leave blank to mark as <strong style={{ color: "#f57f17" }}>TBD</strong>. The receptionist can fill in the final amount at check-out.
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* Footer */}
             <div className="insp-foot">
               <button className="insp-btn-cancel" onClick={() => setInspModal(null)}>Cancel</button>
               <button className="insp-btn-clear" onClick={() => submitInspection("cleared")} disabled={submitting}>

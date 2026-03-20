@@ -183,22 +183,26 @@ export default function CheckIn() {
 
   const calcWalkInTotal = () => {
     const room = rooms.find(r => r.id === walkIn.room_id);
-    if (!room || !walkIn.check_in || !walkIn.check_out) return 0;
+    if (!room || !walkIn.check_in) return 0;
+    if (!walkIn.check_out) return parseFloat(room.price); // show per-night rate for open stays
     return Math.max(0, (new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000) * parseFloat(room.price);
   };
 
   const handleWalkIn = async () => {
     setWalkInError("");
-    if (!walkIn.guest_name || !walkIn.room_id || !walkIn.check_in || !walkIn.check_out) { setWalkInError("Please fill in all required fields."); return; }
-    if (new Date(walkIn.check_out) <= new Date(walkIn.check_in)) { setWalkInError("Check-out must be after check-in."); return; }
+    if (!walkIn.guest_name || !walkIn.room_id || !walkIn.check_in) { setWalkInError("Please fill in guest name, room, and check-in date."); return; }
+    if (walkIn.check_out && new Date(walkIn.check_out) <= new Date(walkIn.check_in)) { setWalkInError("Check-out must be after check-in."); return; }
     setSavingWalkIn(true);
     const room = rooms.find(r => r.id === walkIn.room_id);
-    const nights = Math.max(0, (new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000);
+    const nights = walkIn.check_out
+      ? Math.max(0, (new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000)
+      : 1; // default 1 night for open-ended stays
     const total = nights * parseFloat(room?.price || 0);
     const { error } = await supabase.from("reservations").insert({
       guest_name: walkIn.guest_name, guest_email: walkIn.guest_email, guest_phone: walkIn.guest_phone,
       room_id: walkIn.room_id, room_number: room?.room_number, check_in: walkIn.check_in,
-      check_out: walkIn.check_out, status: "checked_in", total_amount: total, notes: walkIn.notes,
+      ...(walkIn.check_out ? { check_out: walkIn.check_out } : {}),
+      status: "checked_in", total_amount: total, notes: walkIn.notes,
       amount_paid: walkInPayLater ? 0 : total, pay_later: walkInPayLater,
       payment_method: walkInPayLater ? "pay_at_checkout" : "cash",
       additional_charges: JSON.stringify(walkIn.additional_charges || []),
@@ -441,13 +445,17 @@ export default function CheckIn() {
                       <input type="date" className="fi" value={walkIn.check_in} onChange={e => setWalkIn({...walkIn, check_in: e.target.value})} />
                     </div>
                     <div>
-                      <label className="flabel">Check-Out <span style={{ color: "#e53935" }}>*</span></label>
+                      <label className="flabel">Check-Out <span style={{ fontSize: ".7rem", color: "#8a9a8a", fontWeight: "400", textTransform: "none" }}>(optional — leave blank for open stay)</span></label>
                       <input type="date" className="fi" value={walkIn.check_out} onChange={e => setWalkIn({...walkIn, check_out: e.target.value})} />
                     </div>
                   </div>
                   {calcWalkInTotal() > 0 && (
                     <div className="total-bar-blue">
-                      <span style={{ color: "rgba(255,255,255,.75)", fontSize: ".86rem" }}>{Math.round((new Date(walkIn.check_out)-new Date(walkIn.check_in))/86400000)} nights</span>
+                      <span style={{ color: "rgba(255,255,255,.75)", fontSize: ".86rem" }}>
+                        {walkIn.check_out
+                          ? `${Math.round((new Date(walkIn.check_out)-new Date(walkIn.check_in))/86400000)} nights`
+                          : "Open-ended · per night"}
+                      </span>
                       <span style={{ color: "#fff", fontWeight: "700" }}>₱{calcWalkInTotal().toLocaleString()}</span>
                     </div>
                   )}

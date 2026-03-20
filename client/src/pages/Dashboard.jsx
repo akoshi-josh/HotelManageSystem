@@ -22,8 +22,9 @@ import {
   CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 import supabase from "../supabaseClient";
+import NotificationBell from "./NotificationBell";
 
-const ADMIN_ONLY      = ["Staff"];
+const ADMIN_ONLY       = ["Staff", "Log", "Pricing"];
 const MAINTENANCE_ONLY = ["Maintenance"];
 
 const CSS = `
@@ -190,12 +191,11 @@ export default function Dashboard({ onLogout, user }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [navKey,       setNavKey]       = useState(0);
 
-  const email    = user?.email    || "";
+  const email    = user?.email     || "";
   const name     = user?.full_name || email.split("@")[0];
   const initials = name.slice(0, 2).toUpperCase();
   const role     = user?.role || "staff";
 
-  // On login, maintenance staff goes straight to Maintenance page
   useEffect(() => {
     if (role === "maintenance") setActiveNav("Maintenance");
   }, [role]);
@@ -204,7 +204,7 @@ export default function Dashboard({ onLogout, user }) {
     if (ADMIN_ONLY.includes(key) && role !== "admin") return;
     if (MAINTENANCE_ONLY.includes(key) && role !== "admin" && role !== "maintenance") return;
     setActiveNav(key);
-    setNavKey(k => k + 1); // force remount so pages always fetch fresh data
+    setNavKey(k => k + 1);
     setShowDropdown(false);
   };
 
@@ -215,11 +215,11 @@ export default function Dashboard({ onLogout, user }) {
       case "Staff":        return <Staff />;
       case "Rooms":        return <Rooms userRole={role} />;
       case "Reservations": return <Reservations />;
-      case "Check-In":     return <CheckIn key={`checkin-${navKey}`} />;
-      case "Check-Out":    return <CheckOut key={`checkout-${navKey}`} />;
+      case "Check-In":     return <CheckIn     key={`checkin-${navKey}`} />;
+      case "Check-Out":    return <CheckOut    key={`checkout-${navKey}`} />;
       case "Guests":       return <Guests />;
-      case "Maintenance":  return <Maintenance user={user} />;
-      case "In-House":     return <InHouse key={`inhouse-${navKey}`} />;
+      case "Maintenance":  return <Maintenance key={`maintenance-${navKey}`} user={user} />;
+      case "In-House":     return <InHouse     key={`inhouse-${navKey}`} />;
       case "Pricing":      return <Pricing />;
       case "Log":          return <ActivityLog />;
       case "Settings":     return <Settings user={user} userRole={role} />;
@@ -232,7 +232,7 @@ export default function Dashboard({ onLogout, user }) {
   return (
     <>
       <style>{CSS}</style>
-      <div className="db-root">
+      <div className="db-root" onClick={() => showDropdown && setShowDropdown(false)}>
         <Sidebar
           activeNav={activeNav}
           setActiveNav={handleNav}
@@ -254,8 +254,9 @@ export default function Dashboard({ onLogout, user }) {
               </div>
 
               <div className="topbar-right">
-                <div className="dd-wrap">
-                  <button className="profile-btn" onClick={() => setShowDropdown(!showDropdown)} type="button">
+                <NotificationBell onNavigate={handleNav} />
+                <div className="dd-wrap" onClick={e => e.stopPropagation()}>
+                  <button className="profile-btn" onClick={() => setShowDropdown(d => !d)} type="button">
                     <div className="profile-avatar">{initials}</div>
                     <div style={{ lineHeight: "1.3", textAlign: "left" }}>
                       <div style={{ fontSize: ".88rem", fontWeight: "700", color: "#222" }}>{name}</div>
@@ -273,14 +274,12 @@ export default function Dashboard({ onLogout, user }) {
                           {role}
                         </div>
                       </div>
-
                       {DD_ITEMS.map(({ Icon, label, nav }) => (
                         <div key={label} className="dd-item" onClick={() => { if (nav) handleNav(nav); setShowDropdown(false); }}>
                           <span className="dd-icon"><Icon size={16} color="#555" /></span>
                           <span>{label}</span>
                         </div>
                       ))}
-
                       <div style={{ borderTop: "1px solid #f0f0f0" }}>
                         <div className="dd-item danger" onClick={onLogout}>
                           <span className="dd-icon"><RiLogoutCircleLine size={16} /></span>
@@ -345,7 +344,7 @@ function DashboardHome() {
         revenue,
       });
       setRecentRes(r.slice(0, 8));
-      setCheckIns(r.filter(x => x.check_in === today && ["confirmed","pending","checked_in","checked_out"].includes(x.status)));
+      setCheckIns(r.filter(x  => x.check_in  === today && ["confirmed","pending","checked_in","checked_out"].includes(x.status)));
       setCheckOuts(r.filter(x => x.check_out === today && ["checked_in","checked_out"].includes(x.status)));
 
       const months = [];
@@ -367,11 +366,11 @@ function DashboardHome() {
   }, []);
 
   const STAT_CARDS = [
-    { lbl: "Total Rooms",  val: stats.total,        Icon: RiHotelBedLine,          bg: "#e3f2fd", color: "#1565c0" },
-    { lbl: "Available",    val: stats.available,    Icon: RiCheckboxCircleLine,    bg: "#e8f5e9", color: "#1b5e20" },
-    { lbl: "Occupied",     val: stats.occupied,     Icon: RiHome4Line,             bg: "#fff3e0", color: "#e65100" },
-    { lbl: "Reservations", val: stats.reservations, Icon: RiCalendarLine,          bg: "#f3e5f5", color: "#6a1b9a" },
-    { lbl: "Revenue",      val: `₱${stats.revenue.toLocaleString()}`, Icon: RiMoneyDollarCircleLine, bg: "#fff8e1", color: "#f57f17" },
+    { lbl: "Total Rooms",  val: stats.total,                            Icon: RiHotelBedLine,          bg: "#e3f2fd", color: "#1565c0" },
+    { lbl: "Available",    val: stats.available,                        Icon: RiCheckboxCircleLine,    bg: "#e8f5e9", color: "#1b5e20" },
+    { lbl: "Occupied",     val: stats.occupied,                         Icon: RiHome4Line,             bg: "#fff3e0", color: "#e65100" },
+    { lbl: "Reservations", val: stats.reservations,                     Icon: RiCalendarLine,          bg: "#f3e5f5", color: "#6a1b9a" },
+    { lbl: "Revenue",      val: `₱${stats.revenue.toLocaleString()}`,   Icon: RiMoneyDollarCircleLine, bg: "#fff8e1", color: "#f57f17" },
   ];
 
   return (
@@ -441,7 +440,7 @@ function DashboardHome() {
                 <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#7a9a7a" }} />
                 <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #d1fae5" }} />
                 <Legend />
-                <Bar dataKey="bookings" name="Bookings" fill="#5cb85c" radius={[6,6,0,0]} />
+                <Bar  dataKey="bookings" name="Bookings" fill="#5cb85c" radius={[6,6,0,0]} />
                 <Line type="monotone" dataKey="bookings" name="Trend" stroke="#07713c" strokeWidth={2.5} dot={{ fill: "#07713c", r: 4 }} />
               </ComposedChart>
             </ResponsiveContainer>
@@ -463,7 +462,7 @@ function DashboardHome() {
                 <YAxis tick={{ fontSize: 12, fill: "#7a9a7a" }} tickFormatter={v => `₱${v.toLocaleString()}`} />
                 <Tooltip formatter={v => [`₱${v.toLocaleString()}`, "Revenue"]} contentStyle={{ borderRadius: 8, border: "1px solid #d1fae5" }} />
                 <Legend />
-                <Bar dataKey="revenue" name="Revenue (₱)" fill="#ecfdf5" stroke="#5cb85c" strokeWidth={1} radius={[6,6,0,0]} />
+                <Bar  dataKey="revenue" name="Revenue (₱)" fill="#ecfdf5" stroke="#5cb85c" strokeWidth={1} radius={[6,6,0,0]} />
                 <Line type="monotone" dataKey="revenue" name="Trend" stroke="#07713c" strokeWidth={2.5} dot={{ fill: "#07713c", r: 4 }} />
               </ComposedChart>
             </ResponsiveContainer>
@@ -473,7 +472,7 @@ function DashboardHome() {
       <div className="tc">
         <div className="tc-hdr">
           <div className="tc-title">Recent Reservations</div>
-          <span className="tc-badge">{/* count filled below */}Recent</span>
+          <span className="tc-badge">Recent</span>
         </div>
         <div className="tc-head" style={{ gridTemplateColumns: "2fr .8fr 1fr 1fr 1fr 1fr" }}>
           {["Guest","Room","Check-In","Check-Out","Total","Status"].map(h => <div key={h} className="th">{h}</div>)}

@@ -3,7 +3,7 @@ import {
   RiUserLine, RiHotelBedLine, RiCalendarLine, RiLogoutBoxLine,
   RiErrorWarningLine, RiTimeLine, RiMoneyDollarCircleLine,
   RiStickyNoteLine, RiCheckboxCircleLine, RiSearchLine, RiAlertLine,
-  RiToolsLine, RiCheckDoubleLine,
+  RiToolsLine, RiCheckDoubleLine, RiPencilLine, RiCheckLine,
 } from "react-icons/ri";
 import supabase from "../supabaseClient";
 import { logActivity } from "../logger";
@@ -11,7 +11,7 @@ import { logActivity } from "../logger";
 const inputStyle = { width: "100%", padding: "10px 14px", border: "2px solid #e8e8e8", borderRadius: "8px", fontSize: "0.9rem", outline: "none", fontFamily: "Arial,sans-serif", boxSizing: "border-box", background: "white", transition: "border 0.2s" };
 const labelStyle = { display: "block", fontSize: "0.8rem", fontWeight: "700", color: "#555", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.4px" };
 
-export default function CheckOut() {
+export default function CheckOut({ highlightRoom }) {
   const [reservations,   setReservations]   = useState([]);
   const [loading,        setLoading]        = useState(true);
   const [search,         setSearch]         = useState("");
@@ -25,9 +25,19 @@ export default function CheckOut() {
   const [fullyPaid,      setFullyPaid]      = useState(false);
   const [successMsg,     setSuccessMsg]     = useState("");
   const [requesting,     setRequesting]     = useState(null); // reservation id being requested
+  const [editingCharge,  setEditingCharge]  = useState(null); // { index, value } for editing TBD amounts
+  const [highlighted,    setHighlighted]    = useState(null);
 
   const today = new Date().toISOString().split("T")[0];
   useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Highlight a room when navigated from notification
+  useEffect(() => {
+    if (highlightRoom?.room_number) {
+      setHighlighted(highlightRoom.room_number);
+      setTimeout(() => setHighlighted(null), 4000);
+    }
+  }, [highlightRoom]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -38,11 +48,39 @@ export default function CheckOut() {
 
   const getInspectionCharges = (res) => { try { return JSON.parse(res?.inspection_charges || "[]"); } catch { return []; } };
 
+  const saveChargePrice = async (res, idx, newAmount) => {
+    const charges = getInspectionCharges(res);
+    charges[idx] = { ...charges[idx], amount: parseFloat(newAmount) || 0, tbd: false };
+    await supabase.from("reservations")
+      .update({ inspection_charges: JSON.stringify(charges) })
+      .eq("id", res.id);
+    // Refresh local state
+    setReservations(prev => prev.map(r => r.id === res.id
+      ? { ...r, inspection_charges: JSON.stringify(charges) }
+      : r
+    ));
+    if (selected && selected.id === res.id) {
+      setSelected(prev => ({ ...prev, inspection_charges: JSON.stringify(charges) }));
+    }
+    setEditingCharge(null);
+  };
+
   const handleRequestInspection = async (res) => {
     setRequesting(res.id);
     await supabase.from("reservations")
       .update({ inspection_status: "requested" })
       .eq("id", res.id);
+    // Insert notification for maintenance staff
+    await supabase.from("notifications").insert({
+      type:        "inspection_request",
+      title:       `Room ${res.room_number} — Inspection Requested`,
+      message:     `Guest: ${res.guest_name} · Check-out: ${res.check_out || "Open stay"} · Please inspect before check-out.`,
+      entity_type: "reservation",
+      entity_id:   res.id,
+      room_number: res.room_number,
+      guest_name:  res.guest_name,
+      nav_target:  "Maintenance",
+    });
     // Update local state immediately
     setReservations(prev => prev.map(r => r.id === res.id ? { ...r, inspection_status: "requested" } : r));
     setRequesting(null);
@@ -154,9 +192,9 @@ export default function CheckOut() {
     const isOverdue = res.check_out < today;
     const isToday   = res.check_out === today;
     return (
-      <tr style={{ borderBottom: "1px solid #f5f5f5" }}
-        onMouseOver={e => e.currentTarget.style.background = "#fafafa"}
-        onMouseOut={e => e.currentTarget.style.background = "white"}>
+      <tr style={{ borderBottom: "1px solid #f5f5f5", background: highlighted === res.room_number ? "#fff8e1" : "white", transition: "background 0.5s", outline: highlighted === res.room_number ? "2px solid #f59e0b" : "none" }}
+        onMouseOver={e => { if (highlighted !== res.room_number) e.currentTarget.style.background = "#fafafa"; }}
+        onMouseOut={e => { if (highlighted !== res.room_number) e.currentTarget.style.background = "white"; }}>
         <td style={{ padding: "14px 16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "linear-gradient(135deg,#e65100,#ff9800)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: "700", fontSize: "0.85rem", flexShrink: 0 }}>
@@ -234,7 +272,7 @@ export default function CheckOut() {
     const charges = getAdditionalCharges(res);
     const addTotal = charges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     return (
-      <div style={{ background: "white", borderRadius: "14px", overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", border: "1px solid #e4ebe4", display: "flex" }}>
+      <div style={{ background: highlighted === res.room_number ? "#fff8e1" : "white", borderRadius: "14px", overflow: "hidden", boxShadow: highlighted === res.room_number ? "0 0 0 2px #f59e0b" : "0 2px 10px rgba(0,0,0,0.06)", border: highlighted === res.room_number ? "1px solid #f59e0b" : "1px solid #e4ebe4", display: "flex", transition: "all 0.5s" }}>
         {/* Left green strip */}
         <div style={{ background: "linear-gradient(180deg,#1565c0,#1976d2)", padding: "18px 16px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minWidth: "90px", flexShrink: 0 }}>
           <div style={{ fontSize: "0.62rem", color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "2px" }}>Room</div>
@@ -451,21 +489,63 @@ export default function CheckOut() {
 
               {/* Inspection result banner in modal */}
               {selected?.inspection_status === "has_damage" && (
-                <div style={{ background: "#fce4ec", border: "1.5px solid #ef9a9a", borderRadius: "10px", padding: "12px 16px", marginBottom: "16px", display: "flex", gap: "10px", alignItems: "flex-start" }}>
-                  <RiAlertLine size={18} color="#c62828" style={{ flexShrink: 0, marginTop: "1px" }} />
-                  <div>
-                    <div style={{ fontWeight: "700", color: "#c62828", fontSize: "0.88rem", marginBottom: "4px" }}>Damage Reported by Maintenance</div>
-                    {selected.inspection_notes && <div style={{ fontSize: "0.82rem", color: "#555" }}>{selected.inspection_notes}</div>}
-                    {getInspectionCharges(selected).length > 0 && (
-                      <div style={{ marginTop: "8px" }}>
-                        {getInspectionCharges(selected).map((c, i) => (
-                          <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", color: "#333", padding: "2px 0" }}>
-                            <span>• {c.name}</span><span style={{ fontWeight: "700", color: "#c62828" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                <div style={{ background: "#fce4ec", border: "1.5px solid #ef9a9a", borderRadius: "10px", padding: "14px 16px", marginBottom: "16px" }}>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" }}>
+                    <RiAlertLine size={16} color="#c62828" />
+                    <span style={{ fontWeight: "700", color: "#c62828", fontSize: "0.88rem" }}>Damage Reported by Maintenance</span>
                   </div>
+                  {selected.inspection_notes && (
+                    <div style={{ fontSize: "0.82rem", color: "#555", marginBottom: "10px", background: "#fff5f5", padding: "8px 10px", borderRadius: "7px" }}>
+                      {selected.inspection_notes}
+                    </div>
+                  )}
+                  {getInspectionCharges(selected).length > 0 && (
+                    <div>
+                      <div style={{ fontSize: ".72rem", fontWeight: "700", color: "#c62828", textTransform: "uppercase", marginBottom: "6px" }}>Damage Charges</div>
+                      {getInspectionCharges(selected).map((c, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.83rem", padding: "5px 8px", background: "#fff", borderRadius: "7px", marginBottom: "4px", border: "1px solid #ffcdd2" }}>
+                          <span style={{ color: "#333" }}>• {c.name}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            {editingCharge?.index === i ? (
+                              <>
+                                <input
+                                  type="number"
+                                  autoFocus
+                                  defaultValue={c.tbd ? "" : c.amount}
+                                  style={{ width: "90px", padding: "4px 8px", border: "1.5px solid #c62828", borderRadius: "6px", fontSize: ".83rem", outline: "none", fontFamily: "Arial,sans-serif" }}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") saveChargePrice(selected, i, e.target.value);
+                                    if (e.key === "Escape") setEditingCharge(null);
+                                  }}
+                                  id={`charge-edit-${i}`}
+                                />
+                                <button onClick={() => saveChargePrice(selected, i, document.getElementById(`charge-edit-${i}`)?.value)}
+                                  style={{ background: "#07713c", border: "none", borderRadius: "6px", padding: "4px 8px", cursor: "pointer", color: "#fff", display: "flex", alignItems: "center" }}>
+                                  <RiCheckLine size={13} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                {c.tbd
+                                  ? <span style={{ fontSize: ".72rem", fontWeight: "700", color: "#f57f17", background: "#fff8e1", padding: "2px 7px", borderRadius: "8px", border: "1px solid #ffe082" }}>TBD</span>
+                                  : <span style={{ fontWeight: "700", color: "#c62828" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                                }
+                                <button onClick={() => setEditingCharge({ index: i })}
+                                  style={{ background: c.tbd ? "#f57f17" : "#f4f6f0", border: "none", borderRadius: "6px", padding: "4px 7px", cursor: "pointer", color: c.tbd ? "#fff" : "#555", display: "flex", alignItems: "center", gap: "3px", fontSize: ".72rem", fontWeight: "700" }}>
+                                  <RiPencilLine size={11} />{c.tbd ? "Set Price" : "Edit"}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {getInspectionCharges(selected).some(c => c.tbd) && (
+                        <div style={{ fontSize: ".75rem", color: "#f57f17", marginTop: "6px", fontStyle: "italic" }}>
+                          ⚠ Some charges are TBD — click "Set Price" to enter the final amount before checkout.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {selected?.inspection_status === "cleared" && (
