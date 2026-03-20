@@ -68,6 +68,13 @@ const CSS = `
 .alert-err { padding:10px 15px; border-radius:8px; background:#fdecea; border-left:3px solid #e53935; color:#b71c1c; font-size:.84rem; margin-bottom:14px; }
 `;
 
+const ROLE_PILL = {
+  admin:        { bg: "#ecfdf5", color: "#07713c" },
+  staff:        { bg: "#e3f2fd", color: "#1565c0" },
+  receptionist: { bg: "#f3e5f5", color: "#6a1b9a" },
+  maintenance:  { bg: "#fff3e0", color: "#e65100" },
+};
+
 export default function Staff() {
   const [staffList, setStaffList] = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -193,41 +200,44 @@ export default function Staff() {
               <div className="empty">Loading...</div>
             ) : filtered.length === 0 ? (
               <div className="empty">No staff found.</div>
-            ) : filtered.map(s => (
-              <div key={s.id} className="tr" style={{ gridTemplateColumns: cols }}>
-                <div className="rg">
-                  <div className="av">{s.full_name.slice(0, 2).toUpperCase()}</div>
-                  <span className="rg-name">{s.full_name}</span>
+            ) : filtered.map(s => {
+              const rolePill = ROLE_PILL[s.role] || { bg: "#f5f5f5", color: "#888" };
+              return (
+                <div key={s.id} className="tr" style={{ gridTemplateColumns: cols }}>
+                  <div className="rg">
+                    <div className="av">{s.full_name.slice(0, 2).toUpperCase()}</div>
+                    <span className="rg-name">{s.full_name}</span>
+                  </div>
+                  <div style={{ fontSize: ".84rem", color: "#6b7a6b" }}>{s.email}</div>
+                  <div>
+                    <span className="pill" style={{ background: rolePill.bg, color: rolePill.color }}>
+                      {s.role}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="pill" style={{ background: s.status === "active" ? "#e8f5e9" : "#fce4ec", color: s.status === "active" ? "#1b5e20" : "#c62828" }}>
+                      {s.status}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: ".82rem", color: "#8a9a8a" }}>{new Date(s.created_at).toLocaleDateString()}</div>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button className="ba ba-edit" onClick={() => openEdit(s)}>
+                      <RiPencilLine size={13} /> Edit
+                    </button>
+                    <button
+                      className="ba"
+                      style={{ borderColor: s.status === "active" ? "#fca5a5" : "#a5d6a7", color: s.status === "active" ? "#dc2626" : "#1b5e20", background: "#fff" }}
+                      onClick={() => toggleStatus(s)}
+                    >
+                      {s.status === "active"
+                        ? <><RiCloseCircleLine size={13} /> Deactivate</>
+                        : <><RiCheckboxCircleLine size={13} /> Activate</>
+                      }
+                    </button>
+                  </div>
                 </div>
-                <div style={{ fontSize: ".84rem", color: "#6b7a6b" }}>{s.email}</div>
-                <div>
-                  <span className="pill" style={{ background: s.role === "admin" ? "#ecfdf5" : "#e3f2fd", color: s.role === "admin" ? "#07713c" : "#1565c0" }}>
-                    {s.role}
-                  </span>
-                </div>
-                <div>
-                  <span className="pill" style={{ background: s.status === "active" ? "#e8f5e9" : "#fce4ec", color: s.status === "active" ? "#1b5e20" : "#c62828" }}>
-                    {s.status}
-                  </span>
-                </div>
-                <div style={{ fontSize: ".82rem", color: "#8a9a8a" }}>{new Date(s.created_at).toLocaleDateString()}</div>
-                <div style={{ display: "flex", gap: "6px" }}>
-                  <button className="ba ba-edit" onClick={() => openEdit(s)}>
-                    <RiPencilLine size={13} /> Edit
-                  </button>
-                  <button
-                    className="ba"
-                    style={{ borderColor: s.status === "active" ? "#fca5a5" : "#a5d6a7", color: s.status === "active" ? "#dc2626" : "#1b5e20", background: "#fff" }}
-                    onClick={() => toggleStatus(s)}
-                  >
-                    {s.status === "active"
-                      ? <><RiCloseCircleLine size={13} /> Deactivate</>
-                      : <><RiCheckboxCircleLine size={13} /> Activate</>
-                    }
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -248,19 +258,41 @@ export default function Staff() {
               <div className="sc2">
                 <div className="sc2-title">Account Details</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                  <div><label className="flabel">Full Name</label><input className="fi" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} placeholder="e.g. Juan Dela Cruz" /></div>
+                  <div>
+                    <label className="flabel">Full Name</label>
+                    <input className="fi" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} placeholder="e.g. Juan Dela Cruz" />
+                  </div>
                   <div>
                     <label className="flabel">Email Address</label>
                     <input type="email" className="fi" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="e.g. juan@hotel.com" disabled={!!editUser} style={editUser ? { background: "#f5f8f5", color: "#9aaa9a" } : {}} />
                   </div>
-                  {!editUser && <div><label className="flabel">Password</label><input type="password" className="fi" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Min. 6 characters" /></div>}
+                  {!editUser && (
+                    <div>
+                      <label className="flabel">Password</label>
+                      <input type="password" className="fi" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Min. 6 characters" />
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="sc2">
                 <div className="sc2-title">Role & Status</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                  <div><label className="flabel">Role</label><select className="fi" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={{ cursor: "pointer" }}><option value="staff">Staff</option><option value="receptionist">Receptionist</option><option value="admin">Admin</option></select></div>
-                  <div><label className="flabel">Status</label><select className="fi" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={{ cursor: "pointer" }}><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+                  <div>
+                    <label className="flabel">Role</label>
+                    <select className="fi" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={{ cursor: "pointer" }}>
+                      <option value="staff">Staff</option>
+                      <option value="receptionist">Receptionist</option>
+                      <option value="maintenance">Maintenance</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="flabel">Status</label>
+                    <select className="fi" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={{ cursor: "pointer" }}>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>

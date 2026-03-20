@@ -1,0 +1,478 @@
+import React, { useState, useEffect } from "react";
+import {
+  RiToolsLine, RiTimeLine, RiCheckboxCircleLine, RiListCheck2,
+  RiLoginBoxLine, RiLogoutBoxLine, RiUserLine, RiStickyNoteLine,
+  RiPlayCircleLine, RiPauseLine, RiArrowGoBackLine, RiCheckDoubleLine,
+  RiSearchLine, RiAlertLine, RiAddLine, RiDeleteBinLine, RiMoneyDollarCircleLine,
+} from "react-icons/ri";
+import supabase from "../supabaseClient";
+
+const CSS = `
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.mn-root { padding: 24px 28px 48px; font-family: Arial, sans-serif; background: #f4f6f0; min-height: 100%; display: flex; flex-direction: column; gap: 20px; }
+.mn-hdr-title { font-size: 1.1rem; font-weight: 700; color: #07713c; margin: 0 0 2px; }
+.mn-hdr-sub   { font-size: .83rem; color: #8a9a8a; }
+.mn-sc4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+.mn-sc  { border-radius: 14px; padding: 18px 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.mn-sc-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.mn-sc-lbl { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+.mn-sc-val { font-size: 1.9rem; font-weight: 700; color: #1a1a1a; }
+.mn-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.mn-tab { display: flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 20px; border: none; cursor: pointer; font-weight: 700; font-size: .83rem; font-family: Arial, sans-serif; transition: background .15s, color .15s; }
+.mn-tab.active { background: #07713c; color: #fff; }
+.mn-tab.inactive { background: #fff; color: #555; box-shadow: 0 2px 6px rgba(0,0,0,0.07); }
+.mn-tab.inactive:hover { background: #ecfdf5; color: #07713c; }
+.mn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px,1fr)); gap: 16px; }
+.mn-card { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.07); border: 1.5px solid transparent; transition: all .25s; }
+.mn-card.done { opacity: .72; border-color: #d1fae5; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+.mn-card-strip { padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; }
+.mn-strip-left { display: flex; align-items: center; gap: 7px; }
+.mn-strip-label { font-size: .76rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+.mn-status-pill { display: flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: .72rem; font-weight: 700; }
+.mn-body { padding: 16px 18px; }
+.mn-room-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.mn-room-num { font-size: 2rem; font-weight: 700; color: #07713c; line-height: 1; }
+.mn-done-ico { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; background: #ecfdf5; }
+.mn-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+.mn-info-cell { background: #f4f6f0; border-radius: 8px; padding: 9px 12px; }
+.mn-info-lbl  { font-size: .68rem; color: #8a9a8a; font-weight: 700; text-transform: uppercase; margin-bottom: 2px; display: flex; align-items: center; gap: 4px; }
+.mn-info-val  { font-size: .86rem; font-weight: 600; color: #222; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mn-note { display: flex; align-items: flex-start; gap: 7px; background: #fffde7; border: 1px solid #fff176; border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; font-size: .81rem; color: #555; line-height: 1.4; }
+.mn-actions { display: flex; gap: 8px; }
+.mn-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 12px; border: none; border-radius: 9px; cursor: pointer; font-weight: 700; font-size: .83rem; font-family: Arial, sans-serif; transition: opacity .15s; }
+.mn-btn:disabled { cursor: not-allowed; opacity: .55; }
+.mn-btn-start { background: #e3f2fd; color: #1565c0; flex: 1; }
+.mn-btn-pause { background: #fff8e1; color: #f57f17; flex: 1; }
+.mn-btn-clean { background: #07713c; color: #fff; flex: 2; }
+.mn-btn-undo  { background: #f4f6f0; color: #8a9a8a; width: 100%; border: 1px solid #e0e0e0; }
+.mn-empty { background: #fff; border-radius: 14px; padding: 60px 20px; text-align: center; border: 1px solid #e4ebe4; }
+.mn-empty-ico { display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; width: 60px; height: 60px; border-radius: 50%; background: #ecfdf5; }
+.mn-empty-title { font-size: 1rem; font-weight: 700; color: #333; margin-bottom: 6px; }
+.mn-empty-sub { font-size: .85rem; color: #aaa; }
+.mn-success { display: flex; align-items: center; gap: 10px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; padding: 12px 18px; border-radius: 10px; font-weight: 600; font-size: .88rem; }
+.mn-btn-inspect { background: #fce4ec; color: #c62828; flex: 1; border: 1.5px solid #ef9a9a; }
+.mn-btn-inspect:hover { background: #ffcdd2; }
+.mn-btn-clear { background: #ecfdf5; color: #07713c; flex: 1; border: 1.5px solid #a7f3d0; }
+.mn-btn-clear:hover { background: #d1fae5; }
+.insp-mo { position:fixed; inset:0; z-index:999; display:flex; align-items:flex-start; justify-content:center; background:rgba(0,0,0,.50); backdrop-filter:blur(2px); padding:20px; overflow-y:auto; }
+.insp-mb { background:#f4f6f0; border-radius:20px; width:100%; max-width:500px; box-shadow:0 20px 60px rgba(0,0,0,.22); margin:auto; overflow:hidden; }
+.insp-mh { padding:18px 24px; background:linear-gradient(135deg,#c62828,#e53935); display:flex; justify-content:space-between; align-items:center; }
+.insp-mh-title { color:#fff; font-size:1rem; font-weight:700; margin:0; }
+.insp-mh-sub   { color:rgba(255,255,255,.7); font-size:.8rem; margin:3px 0 0; }
+.insp-mx { background:rgba(255,255,255,.15); border:none; width:32px; height:32px; border-radius:50%; cursor:pointer; color:#fff; font-size:1.2rem; display:flex; align-items:center; justify-content:center; }
+.insp-mx:hover { background:rgba(255,255,255,.28); }
+.insp-body { padding:20px 24px; }
+.insp-sec { background:#fff; border-radius:12px; padding:14px 16px; margin-bottom:12px; border:1px solid #e4ebe4; }
+.insp-sec-title { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
+.insp-fi { width:100%; padding:9px 12px; border:1.5px solid #ccdacc; border-radius:9px; font-size:.88rem; font-family:Arial,sans-serif; outline:none; background:#fff; color:#333; box-sizing:border-box; transition:border-color .2s; }
+.insp-fi:focus { border-color:#c62828; box-shadow:0 0 0 3px rgba(198,40,40,.1); }
+.insp-fi::placeholder { color:#a8b8a8; font-style:italic; }
+.insp-charge-row { display:flex; justify-content:space-between; align-items:center; padding:7px 11px; background:#fff5f5; border:1px solid #ffcdd2; border-radius:7px; margin-bottom:5px; }
+.insp-add-row { display:flex; gap:7px; align-items:center; margin-top:8px; }
+.insp-add-fi { flex:1; padding:8px 11px; border:1.5px dashed #ef9a9a; border-radius:8px; font-size:.84rem; outline:none; font-family:Arial,sans-serif; color:#333; }
+.insp-add-fi:focus { border-color:#c62828; }
+.insp-add-fi::placeholder { color:#a8b8a8; font-style:italic; }
+.insp-add-btn { padding:8px 14px; background:#c62828; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:700; font-size:.82rem; font-family:Arial,sans-serif; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; }
+.insp-add-btn:disabled { background:#aaa; cursor:not-allowed; }
+.insp-foot { padding:14px 24px; border-top:1px solid #e4ebe4; display:flex; gap:10px; }
+.insp-btn-cancel  { flex:1; padding:11px; background:#fff; border:1.5px solid #ccdacc; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:600; color:#555; font-family:Arial,sans-serif; }
+.insp-btn-damage  { flex:2; padding:11px; background:#c62828; border:none; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:700; color:#fff; font-family:Arial,sans-serif; display:flex; align-items:center; justify-content:center; gap:6px; }
+.insp-btn-clear   { flex:2; padding:11px; background:#07713c; border:none; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:700; color:#fff; font-family:Arial,sans-serif; display:flex; align-items:center; justify-content:center; gap:6px; }
+.insp-btn-damage:disabled, .insp-btn-clear:disabled { background:#aaa; cursor:not-allowed; }
+`;
+
+const TASK_STATUS = {
+  pending:     { bg: "#fff8e1", color: "#f57f17", label: "Pending",     Icon: RiTimeLine },
+  in_progress: { bg: "#e3f2fd", color: "#1565c0", label: "In Progress", Icon: RiToolsLine },
+  done:        { bg: "#ecfdf5", color: "#07713c", label: "Done",        Icon: RiCheckboxCircleLine },
+};
+const TASK_TYPE = {
+  pre_checkin:   { label: "Pre Check-In Cleaning",   Icon: RiLoginBoxLine,  color: "#1565c0", bg: "#e3f2fd" },
+  post_checkout: { label: "Post Check-Out Cleaning",  Icon: RiLogoutBoxLine, color: "#6a1b9a", bg: "#f3e5f5" },
+  inspection:    { label: "Room Inspection Request",  Icon: RiSearchLine,    color: "#c62828", bg: "#fce4ec" },
+};
+const TABS = [
+  { key: "all",                label: "All Tasks",      Icon: RiListCheck2 },
+  { key: "pending_inprogress", label: "Needs Cleaning", Icon: RiToolsLine },
+  { key: "inspection",         label: "Inspections",    Icon: RiSearchLine },
+  { key: "pre_checkin",        label: "Pre Check-In",   Icon: RiLoginBoxLine },
+  { key: "post_checkout",      label: "Post Check-Out", Icon: RiLogoutBoxLine },
+  { key: "done",               label: "Done",           Icon: RiCheckDoubleLine },
+];
+
+export default function Maintenance({ user }) {
+  const [tasks,      setTasks]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [filter,     setFilter]     = useState("all");
+  const [updating,   setUpdating]   = useState(null);
+  const [successMsg, setSuccessMsg] = useState("");
+  const [inspModal,  setInspModal]  = useState(null);  // task being inspected
+  const [inspNotes,  setInspNotes]  = useState("");
+  const [inspCharges,setInspCharges] = useState([]);   // [{name, amount}]
+  const [inspChgName,setInspChgName] = useState("");
+  const [inspChgAmt, setInspChgAmt]  = useState("");
+  const [submitting, setSubmitting]  = useState(false);
+  const today = new Date().toISOString().split("T")[0];
+
+  useEffect(() => { fetchTasks(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchTasks = async () => {
+    setLoading(true);
+    // Fetch ALL reservations that need cleaning tasks:
+    // 1. check_in = today, status confirmed/pending (pre-cleaning)
+    // 2. check_out = today, status checked_in (post-cleaning)
+    // 3. check_out = today, status checked_out (post-cleaning, may still need cleaning)
+    // 4. check_out < today, status checked_out (overdue post-cleaning)
+    const [
+      { data: preData },
+      { data: postData },
+      { data: maintRooms },
+    ] = await Promise.all([
+      supabase.from("reservations").select("*")
+        .eq("check_in", today)
+        .in("status", ["confirmed", "pending"]),
+      supabase.from("reservations").select("*")
+        .in("status", ["checked_in", "checked_out"])
+        .lte("check_out", today),
+      supabase.from("rooms").select("*").eq("status", "maintenance"),
+    ]);
+
+    const built = [];
+
+    (preData || []).forEach(r => built.push({
+      id: `pre_${r.id}`, res_id: r.id, room_number: r.room_number,
+      type: "pre_checkin", guest_name: r.guest_name, time: "Check-in today",
+      check_in: r.check_in, check_out: r.check_out,
+      // Use the persisted cleaning_status from DB — don't default to pending if already done
+      status: r.cleaning_status || "pending",
+      notes: r.notes || "",
+    }));
+
+    // Inspection tasks — reservations where inspection_status = "requested"
+    const { data: inspData } = await supabase.from("reservations").select("*")
+      .eq("inspection_status", "requested")
+      .eq("status", "checked_in");
+    (inspData || []).forEach(r => {
+      built.push({
+        id: `insp_${r.id}`, res_id: r.id, room_number: r.room_number,
+        type: "inspection", guest_name: r.guest_name,
+        time: "Inspection requested", check_in: r.check_in, check_out: r.check_out,
+        status: "pending", notes: r.notes || "",
+      });
+    });
+
+    (postData || []).forEach(r => {
+      // Only add post-checkout task if cleaning not yet done
+      built.push({
+        id: `post_${r.id}`, res_id: r.id, room_number: r.room_number,
+        type: "post_checkout", guest_name: r.guest_name,
+        time: r.check_out === today ? "Checkout today" : "Overdue",
+        check_in: r.check_in, check_out: r.check_out,
+        status: r.cleaning_status || "pending",
+        notes: r.notes || "",
+      });
+    });
+
+    // Remove duplicates (same res_id appearing in both pre and post)
+    const seen = new Set();
+    const deduped = built.filter(t => {
+      if (seen.has(t.res_id + t.type)) return false;
+      seen.add(t.res_id + t.type);
+      return true;
+    });
+
+    (maintRooms || []).forEach(r => {
+      if (!deduped.find(t => t.room_number === r.room_number)) {
+        deduped.push({
+          id: `maint_${r.id}`, room_id: r.id, room_number: r.room_number,
+          type: "pre_checkin", guest_name: "—", time: "Under maintenance",
+          status: "in_progress", notes: r.description || "",
+        });
+      }
+    });
+
+    setTasks(deduped);
+    setLoading(false);
+  };
+
+  const openInspModal = (task) => {
+    setInspModal(task);
+    setInspNotes(""); setInspCharges([]); setInspChgName(""); setInspChgAmt("");
+  };
+
+  const addInspCharge = () => {
+    if (!inspChgName.trim() || !inspChgAmt) return;
+    setInspCharges(prev => [...prev, { name: inspChgName.trim(), amount: parseFloat(inspChgAmt) }]);
+    setInspChgName(""); setInspChgAmt("");
+  };
+
+  const submitInspection = async (outcome) => {
+    if (!inspModal) return;
+    setSubmitting(true);
+    await supabase.from("reservations").update({
+      inspection_status: outcome,
+      inspection_notes:  inspNotes,
+      inspection_charges: JSON.stringify(outcome === "has_damage" ? inspCharges : []),
+    }).eq("id", inspModal.res_id);
+    setTasks(prev => prev.filter(t => t.id !== inspModal.id));
+    setSuccessMsg(outcome === "cleared"
+      ? `Room ${inspModal.room_number} — cleared, no damage.`
+      : `Room ${inspModal.room_number} — damage reported.`
+    );
+    setTimeout(() => setSuccessMsg(""), 3000);
+    setSubmitting(false);
+    setInspModal(null);
+  };
+
+  const updateStatus = async (task, newStatus) => {
+    setUpdating(task.id);
+    if (task.res_id) {
+      // Save cleaning_status to the DB so it persists across logins
+      await supabase.from("reservations")
+        .update({ cleaning_status: newStatus })
+        .eq("id", task.res_id);
+
+      // Post-checkout done → free up the room
+      if (task.type === "post_checkout" && newStatus === "done") {
+        const { data } = await supabase.from("reservations")
+          .select("room_id").eq("id", task.res_id).single();
+        if (data?.room_id) {
+          await supabase.from("rooms").update({ status: "available" }).eq("id", data.room_id);
+        }
+      }
+    }
+    // Update local state immediately so UI reflects change without refetch
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
+    setUpdating(null);
+    if (newStatus === "done") {
+      setSuccessMsg(`Room ${task.room_number} marked as clean!`);
+      setTimeout(() => setSuccessMsg(""), 2500);
+    }
+  };
+
+  const countBy = s => tasks.filter(t => t.status === s).length;
+  const filtered = filter === "all"               ? tasks
+    : filter === "pending_inprogress"             ? tasks.filter(t => t.status !== "done" && t.type !== "inspection")
+    : filter === "inspection"                     ? tasks.filter(t => t.type === "inspection")
+    : tasks.filter(t => t.type === filter || t.status === filter);
+
+  const STAT_CARDS = [
+    { lbl: "Total Tasks",  val: tasks.length,           Icon: RiListCheck2,         bg: "#f3e5f5", color: "#6a1b9a" },
+    { lbl: "Pending",      val: countBy("pending"),      Icon: RiTimeLine,           bg: "#fff8e1", color: "#f57f17" },
+    { lbl: "In Progress",  val: countBy("in_progress"),  Icon: RiToolsLine,          bg: "#e3f2fd", color: "#1565c0" },
+    { lbl: "Done",         val: countBy("done"),         Icon: RiCheckboxCircleLine, bg: "#ecfdf5", color: "#07713c" },
+  ];
+
+  return (
+    <>
+      <style>{CSS}</style>
+      <div className="mn-root">
+        <div>
+          <h2 className="mn-hdr-title">Maintenance & Housekeeping</h2>
+          <p className="mn-hdr-sub">Today — {new Date().toLocaleDateString("en-PH", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+        </div>
+
+        {successMsg && <div className="mn-success"><RiCheckboxCircleLine size={18} />{successMsg}</div>}
+
+        <div className="mn-sc4">
+          {STAT_CARDS.map(({ lbl, val, Icon, bg, color }) => (
+            <div key={lbl} className="mn-sc" style={{ background: bg }}>
+              <div className="mn-sc-row">
+                <Icon size={18} color={color} />
+                <span className="mn-sc-lbl" style={{ color }}>{lbl}</span>
+              </div>
+              <div className="mn-sc-val">{val}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mn-tabs">
+          {TABS.map(({ key, label, Icon }) => (
+            <button key={key} className={`mn-tab ${filter === key ? "active" : "inactive"}`} onClick={() => setFilter(key)}>
+              <Icon size={14} />{label}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: "60px", color: "#aaa" }}>Loading tasks...</div>
+        ) : filtered.length === 0 ? (
+          <div className="mn-empty">
+            <div className="mn-empty-ico"><RiCheckDoubleLine size={28} color="#07713c" /></div>
+            <div className="mn-empty-title">{filter === "done" ? "No completed tasks yet." : "No cleaning tasks!"}</div>
+            <div className="mn-empty-sub">All rooms are clean and ready.</div>
+          </div>
+        ) : (
+          <div className="mn-grid">
+            {filtered.map(task => {
+              const typeInfo   = TASK_TYPE[task.type]    || TASK_TYPE.pre_checkin;
+              const statusInfo = TASK_STATUS[task.status] || TASK_STATUS.pending;
+              const isDone     = task.status === "done";
+              const TypeIcon   = typeInfo.Icon;
+              const StatIcon   = statusInfo.Icon;
+              return (
+                <div key={task.id} className={`mn-card${isDone ? " done" : ""}`}>
+                  <div className="mn-card-strip" style={{ background: typeInfo.bg, borderBottom: `2px solid ${typeInfo.color}22` }}>
+                    <div className="mn-strip-left">
+                      <TypeIcon size={15} color={typeInfo.color} />
+                      <span className="mn-strip-label" style={{ color: typeInfo.color }}>{typeInfo.label}</span>
+                    </div>
+                    <div className="mn-status-pill" style={{ background: statusInfo.bg, color: statusInfo.color }}>
+                      <StatIcon size={12} />{statusInfo.label}
+                    </div>
+                  </div>
+                  <div className="mn-body">
+                    <div className="mn-room-row">
+                      <div>
+                        <div style={{ fontSize: ".68rem", color: "#8a9a8a", fontWeight: "700", textTransform: "uppercase", marginBottom: "2px" }}>Room</div>
+                        <div className="mn-room-num">{task.room_number || "—"}</div>
+                      </div>
+                      {isDone && <div className="mn-done-ico"><RiCheckboxCircleLine size={24} color="#07713c" /></div>}
+                    </div>
+                    <div className="mn-info-grid">
+                      <div className="mn-info-cell">
+                        <div className="mn-info-lbl"><RiUserLine size={10} />Guest</div>
+                        <div className="mn-info-val">{task.guest_name}</div>
+                      </div>
+                      <div className="mn-info-cell">
+                        <div className="mn-info-lbl"><RiTimeLine size={10} />Schedule</div>
+                        <div className="mn-info-val">{task.time}</div>
+                      </div>
+                      {task.check_in && (
+                        <div className="mn-info-cell">
+                          <div className="mn-info-lbl"><RiLoginBoxLine size={10} />Check-In</div>
+                          <div className="mn-info-val">{task.check_in}</div>
+                        </div>
+                      )}
+                      {task.check_out && (
+                        <div className="mn-info-cell">
+                          <div className="mn-info-lbl"><RiLogoutBoxLine size={10} />Check-Out</div>
+                          <div className="mn-info-val">{task.check_out}</div>
+                        </div>
+                      )}
+                    </div>
+                    {task.notes && (
+                      <div className="mn-note">
+                        <RiStickyNoteLine size={14} color="#f59e0b" style={{ flexShrink: 0, marginTop: "1px" }} />
+                        {task.notes}
+                      </div>
+                    )}
+                    {task.type === "inspection" ? (
+                      <div className="mn-actions">
+                        <button className="mn-btn mn-btn-clear" onClick={() => openInspModal(task)}>
+                          <RiSearchLine size={14} />Start Inspection
+                        </button>
+                      </div>
+                    ) : !isDone ? (
+                      <div className="mn-actions">
+                        {task.status === "pending" && (
+                          <button className="mn-btn mn-btn-start" onClick={() => updateStatus(task, "in_progress")} disabled={updating === task.id}>
+                            <RiPlayCircleLine size={14} />Start Cleaning
+                          </button>
+                        )}
+                        {task.status === "in_progress" && (
+                          <button className="mn-btn mn-btn-pause" onClick={() => updateStatus(task, "pending")} disabled={updating === task.id}>
+                            <RiPauseLine size={14} />Pause
+                          </button>
+                        )}
+                        <button className="mn-btn mn-btn-clean" onClick={() => updateStatus(task, "done")} disabled={updating === task.id}>
+                          <RiCheckboxCircleLine size={14} />
+                          {updating === task.id ? "Saving..." : "Mark as Clean"}
+                        </button>
+                      </div>
+                    ) : (
+                      <button className="mn-btn mn-btn-undo" style={{ width: "100%" }} onClick={() => updateStatus(task, "pending")}>
+                        <RiArrowGoBackLine size={14} />Undo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── INSPECTION MODAL ── */}
+      {inspModal && (
+        <div className="insp-mo" onClick={() => setInspModal(null)}>
+          <div className="insp-mb" onClick={e => e.stopPropagation()}>
+            <div className="insp-mh">
+              <div>
+                <p className="insp-mh-title">Room Inspection — Room {inspModal.room_number}</p>
+                <p className="insp-mh-sub">Guest: {inspModal.guest_name}</p>
+              </div>
+              <button className="insp-mx" onClick={() => setInspModal(null)}>×</button>
+            </div>
+            <div className="insp-body">
+              {/* Notes */}
+              <div className="insp-sec">
+                <div className="insp-sec-title" style={{ color: "#c62828" }}>
+                  <RiStickyNoteLine size={13} />Inspection Notes
+                </div>
+                <textarea
+                  className="insp-fi"
+                  rows={3}
+                  style={{ resize: "vertical" }}
+                  placeholder="Describe room condition, any issues found..."
+                  value={inspNotes}
+                  onChange={e => setInspNotes(e.target.value)}
+                />
+              </div>
+
+              {/* Damage Charges */}
+              <div className="insp-sec">
+                <div className="insp-sec-title" style={{ color: "#c62828" }}>
+                  <RiMoneyDollarCircleLine size={13} />Damage Charges (Optional)
+                </div>
+                <div style={{ fontSize: ".78rem", color: "#8a9a8a", marginBottom: "10px" }}>
+                  Add items if damage was found. Leave empty if room is in good condition.
+                </div>
+
+                {inspCharges.length > 0 && (
+                  <div style={{ marginBottom: "8px" }}>
+                    {inspCharges.map((c, i) => (
+                      <div key={i} className="insp-charge-row">
+                        <span style={{ fontSize: ".83rem", color: "#333" }}>{c.name}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontWeight: "700", color: "#c62828", fontSize: ".83rem" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                          <button onClick={() => setInspCharges(prev => prev.filter((_, j) => j !== i))}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: "#e53935", display: "flex", alignItems: "center", padding: "2px 3px" }}>
+                            <RiDeleteBinLine size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 11px", fontWeight: "700", fontSize: ".85rem", background: "#fff", borderRadius: "7px", marginTop: "4px" }}>
+                      <span style={{ color: "#555" }}>Total Damage Charges</span>
+                      <span style={{ color: "#c62828" }}>₱{inspCharges.reduce((s,c)=>s+parseFloat(c.amount),0).toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="insp-add-row">
+                  <input className="insp-add-fi" value={inspChgName} onChange={e => setInspChgName(e.target.value)}
+                    placeholder="e.g. Broken mirror, Stained bedsheet..." onKeyDown={e => e.key === "Enter" && addInspCharge()} />
+                  <input type="number" className="insp-add-fi" style={{ flex: "0 0 100px" }} value={inspChgAmt}
+                    onChange={e => setInspChgAmt(e.target.value)} placeholder="₱ Amount" onKeyDown={e => e.key === "Enter" && addInspCharge()} />
+                  <button className="insp-add-btn" onClick={addInspCharge} disabled={!inspChgName.trim() || !inspChgAmt}>
+                    <RiAddLine size={13} />Add
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="insp-foot">
+              <button className="insp-btn-cancel" onClick={() => setInspModal(null)}>Cancel</button>
+              <button className="insp-btn-clear" onClick={() => submitInspection("cleared")} disabled={submitting}>
+                <RiCheckDoubleLine size={15} />{submitting ? "Saving..." : "No Damage — Clear"}
+              </button>
+              <button className="insp-btn-damage" onClick={() => submitInspection("has_damage")} disabled={submitting || !inspNotes.trim()}>
+                <RiAlertLine size={15} />{submitting ? "Saving..." : "Report Damage"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

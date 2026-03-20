@@ -1,5 +1,10 @@
 import React from "react";
-import { RiDashboardLine, RiHotelBedLine, RiCalendarLine, RiLoginBoxLine, RiLogoutBoxLine, RiGroupLine, RiUserLine, RiSettings3Line, RiHotelLine, RiLogoutCircleLine } from "react-icons/ri";
+import {
+  RiDashboardLine, RiHotelBedLine, RiCalendarLine,
+  RiLoginBoxLine, RiLogoutBoxLine, RiGroupLine,
+  RiUserLine, RiSettings3Line, RiHotelLine,
+  RiLogoutCircleLine, RiToolsLine, RiPriceTag3Line, RiHistoryLine,
+} from "react-icons/ri";
 
 const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -10,7 +15,6 @@ const CSS = `
   display: flex; flex-direction: column;
   height: 100vh; position: relative; overflow: hidden;
 }
-/* NORMI decorative ring */
 .sb-root::before {
   content: ''; position: absolute;
   width: 320px; height: 320px; border-radius: 50%;
@@ -24,7 +28,6 @@ const CSS = `
   bottom: -60px; right: -80px; pointer-events: none;
 }
 
-/* LOGO */
 .sb-logo {
   padding: 20px 18px 16px;
   display: flex; align-items: center; gap: 11px;
@@ -41,7 +44,6 @@ const CSS = `
 .sb-logo-name { font-size: .88rem; font-weight: 700; color: #fff; line-height: 1.2; }
 .sb-logo-sub  { font-size: .67rem; color: rgba(255,255,255,0.4); letter-spacing: .08em; text-transform: uppercase; margin-top: 2px; }
 
-/* NAV */
 .sb-nav {
   flex: 1; padding: 10px 0;
   display: flex; flex-direction: column; gap: 1px;
@@ -65,14 +67,12 @@ const CSS = `
 }
 .sb-link:hover { color: #fff; background: rgba(255,255,255,0.07); }
 .sb-link.active { color: #fff; background: rgba(255,255,255,0.11); font-weight: 600; }
-/* NORMI 3px left accent bar */
 .sb-link.active::before {
   content: ''; position: absolute; left: 0; top: 0; bottom: 0;
   width: 3px; background: #5cb85c; border-radius: 0 2px 2px 0;
 }
 .sb-icon { font-size: 18px; width: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
-/* FOOTER */
 .sb-footer {
   padding: 13px 14px;
   border-top: 1px solid rgba(255,255,255,0.07);
@@ -89,9 +89,12 @@ const CSS = `
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: .8rem; flex-shrink: 0;
 }
-.sb-email {
-  flex: 1; font-size: .72rem; color: rgba(255,255,255,0.48);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+.sb-user-info { flex: 1; min-width: 0; }
+.sb-user-name { font-size: .75rem; font-weight: 700; color: rgba(255,255,255,0.85); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-role-badge {
+  display: inline-block; font-size: .60rem; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase;
+  padding: 1px 7px; border-radius: 10px; margin-top: 2px;
 }
 .sb-logout {
   background: none; border: none; cursor: pointer;
@@ -103,21 +106,43 @@ const CSS = `
 .sb-logout:hover { color: #fff; background: rgba(255,255,255,0.1); }
 `;
 
+const ROLE_BADGE_CFG = {
+  admin:        { bg: "rgba(255,193,7,0.2)",  color: "#ffd54f",  label: "Admin"        },
+  staff:        { bg: "rgba(92,184,92,0.2)",  color: "#a5d6a7",  label: "Staff"        },
+  receptionist: { bg: "rgba(144,202,249,0.2)",color: "#90caf9",  label: "Receptionist" },
+  maintenance:  { bg: "rgba(255,183,77,0.2)", color: "#ffcc80",  label: "Maintenance"  },
+};
+
+// Define nav groups with role access
 const NAV = [
   { section: "Menu" },
-  { label: "Dashboard",    icon: RiDashboardLine,   key: "Dashboard" },
-  { label: "Rooms",        icon: RiHotelBedLine,    key: "Rooms" },
-  { label: "Reservations", icon: RiCalendarLine,    key: "Reservations" },
-  { label: "Check-In",     icon: RiLoginBoxLine,    key: "Check-In" },
-  { label: "Check-Out",    icon: RiLogoutBoxLine,   key: "Check-Out" },
-  { label: "Guests",       icon: RiGroupLine,       key: "Guests" },
+  { label: "Dashboard",    Icon: RiDashboardLine,  key: "Dashboard",    roles: ["admin","staff","receptionist"] },
+  { label: "Rooms",        Icon: RiHotelBedLine,   key: "Rooms",        roles: ["admin","staff","receptionist"] },
+  { label: "Reservations", Icon: RiCalendarLine,   key: "Reservations", roles: ["admin","staff","receptionist"] },
+  { label: "Check-In",     Icon: RiLoginBoxLine,   key: "Check-In",     roles: ["admin","staff","receptionist"] },
+  { label: "In-House",     Icon: RiHotelBedLine,   key: "In-House",     roles: ["admin","staff","receptionist"] },
+  { label: "Check-Out",    Icon: RiLogoutBoxLine,  key: "Check-Out",    roles: ["admin","staff","receptionist"] },
+  { label: "Guests",       Icon: RiGroupLine,      key: "Guests",       roles: ["admin","staff","receptionist"] },
+  { section: "Maintenance" },
+  { label: "Maintenance",  Icon: RiToolsLine,      key: "Maintenance",  roles: ["admin","maintenance"] },
   { section: "Admin" },
-  { label: "Staff",        icon: RiUserLine,        key: "Staff",   adminOnly: true },
-  { label: "Settings",     icon: RiSettings3Line,   key: "Settings" },
+  { label: "Log",          Icon: RiHistoryLine,    key: "Log",          roles: ["admin"] },
+  { label: "Staff",        Icon: RiUserLine,       key: "Staff",        roles: ["admin"] },
+  { label: "Pricing",      Icon: RiPriceTag3Line,  key: "Pricing",      roles: ["admin"] },
+  { label: "Settings",     Icon: RiSettings3Line,  key: "Settings",     roles: ["admin","staff","receptionist"] },
 ];
 
-export default function Sidebar({ activeNav, setActiveNav, onLogout, userRole, userEmail }) {
-  const initials = (userEmail || "U").slice(0, 2).toUpperCase();
+export default function Sidebar({ activeNav, setActiveNav, onLogout, userRole, userEmail, userName }) {
+  const initials  = (userName || userEmail || "U").slice(0, 2).toUpperCase();
+  const badge     = ROLE_BADGE_CFG[userRole] || ROLE_BADGE_CFG.staff;
+  const visibleNav = NAV.filter(item => item.section || (item.roles && item.roles.includes(userRole)));
+
+  // Hide section headers if no items follow them for this role
+  const filtered = visibleNav.filter((item, idx) => {
+    if (!item.section) return true;
+    const next = visibleNav[idx + 1];
+    return next && !next.section;
+  });
 
   return (
     <>
@@ -134,18 +159,17 @@ export default function Sidebar({ activeNav, setActiveNav, onLogout, userRole, u
         </div>
 
         <nav className="sb-nav">
-          {NAV.map((item, i) => {
+          {filtered.map((item, i) => {
             if (item.section) return <div key={i} className="sb-section">{item.section}</div>;
-            if (item.adminOnly && userRole !== "admin") return null;
-            const IconComponent = item.icon;
+            const { Icon, label, key } = item;
             return (
               <button
-                key={item.key}
-                className={`sb-link${activeNav === item.key ? " active" : ""}`}
-                onClick={() => setActiveNav(item.key)}
+                key={key}
+                className={`sb-link${activeNav === key ? " active" : ""}`}
+                onClick={() => setActiveNav(key)}
               >
-                <span className="sb-icon"><IconComponent size={18} /></span>
-                {item.label}
+                <span className="sb-icon"><Icon size={18} /></span>
+                {label}
               </button>
             );
           })}
@@ -154,7 +178,12 @@ export default function Sidebar({ activeNav, setActiveNav, onLogout, userRole, u
         <div className="sb-footer">
           <div className="sb-user">
             <div className="sb-avatar">{initials}</div>
-            <div className="sb-email">{userEmail || "user@hotel.com"}</div>
+            <div className="sb-user-info">
+              <div className="sb-user-name">{userName || userEmail || "User"}</div>
+              <span className="sb-role-badge" style={{ background: badge.bg, color: badge.color }}>
+                {badge.label}
+              </span>
+            </div>
             <button className="sb-logout" onClick={onLogout} title="Logout">
               <RiLogoutCircleLine size={16} />
             </button>

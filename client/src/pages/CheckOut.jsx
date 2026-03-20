@@ -1,180 +1,303 @@
 import React, { useState, useEffect } from "react";
 import {
-  RiHome4Line, RiAlertLine, RiLogoutBoxLine, RiCalendarTodoLine,
-  RiCoinLine, RiBankCard2Line, RiSmartphoneLine, RiBankLine,
+  RiUserLine, RiHotelBedLine, RiCalendarLine, RiLogoutBoxLine,
+  RiErrorWarningLine, RiTimeLine, RiMoneyDollarCircleLine,
+  RiStickyNoteLine, RiCheckboxCircleLine, RiSearchLine, RiAlertLine,
+  RiToolsLine, RiCheckDoubleLine,
 } from "react-icons/ri";
 import supabase from "../supabaseClient";
+import { logActivity } from "../logger";
 
-const CSS = `
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-.page { padding: 28px 32px; font-family: Arial,sans-serif; background: #f4f6f0; min-height: 100%; }
-.page-hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
-.page-title { font-size:1.6rem; font-weight:700; color:#07713c; margin:0; }
-.page-sub   { font-size:.88rem; color:#6b7a6b; margin:4px 0 0; }
-.sc-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
-.sc { border-radius:14px; padding:20px 22px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
-.sc-row { display:flex; align-items:center; gap:8px; margin-bottom:9px; }
-.sc-ico { display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.sc-lbl { font-size:.8rem; font-weight:700; text-transform:uppercase; }
-.sc-val { font-size:1.9rem; font-weight:700; color:#1a1a1a; }
-.fbar { display:flex; gap:14px; align-items:center; background:#fff; border-radius:14px; padding:14px 22px; margin-bottom:20px; border:1px solid #e4ebe4; }
-.finput { flex:1; padding:10px 14px; border:1.5px solid #ccdacc; border-radius:10px; font-size:.9rem; font-family:Arial,sans-serif; color:#07713c; outline:none; background:#fff; }
-.finput:focus { border-color:#07713c; box-shadow:0 0 0 3px rgba(7,113,60,.1); }
-.finput::placeholder { color:#a8b8a8; font-style:italic; }
-.section-block { margin-bottom:20px; }
-.section-hdr { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
-.section-dot { width:10px; height:10px; border-radius:50%; }
-.section-lbl { font-size:1rem; font-weight:700; color:#333; }
-.tc { background:#fff; border-radius:14px; border:1px solid #e4ebe4; box-shadow:0 1px 4px rgba(0,0,0,.04); overflow:hidden; }
-.tc-head { display:grid; padding:8px 22px; background:#f8faf8; border-bottom:1px solid #eef4ee; }
-.th { font-size:.64rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:#7a9a7a; }
-.tc-scroll { overflow-y:auto; max-height:380px; }
-.tc-scroll::-webkit-scrollbar { width:4px; }
-.tc-scroll::-webkit-scrollbar-thumb { background:#d1e8d1; border-radius:10px; }
-.tr { display:grid; padding:12px 22px; align-items:center; border-bottom:1px solid #f2f7f2; transition:background .15s; }
-.tr:last-child { border-bottom:none; }
-.tr:hover { background:#f8fdf8; }
-.rg { display:flex; align-items:center; gap:10px; min-width:0; }
-.av { width:36px; height:36px; border-radius:50%; flex-shrink:0; background:linear-gradient(135deg,#07713c,#5cb85c); color:#fff; font-weight:700; font-size:.84rem; display:flex; align-items:center; justify-content:center; }
-.rg-name { font-size:.88rem; font-weight:600; color:#07713c; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.rg-sub  { font-size:.73rem; color:#8a9a8a; }
-.cell-room { font-weight:700; font-size:.86rem; color:#07713c; }
-.cell-date { font-size:.84rem; color:#6b7a6b; }
-.cell-amt  { font-weight:700; font-size:.86rem; color:#07713c; }
-.pill { display:inline-flex; padding:3px 10px; border-radius:20px; font-size:.72rem; font-weight:700; }
-.ba { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:7px; border:1.5px solid; font-size:.74rem; font-weight:700; font-family:Arial,sans-serif; cursor:pointer; transition:background .15s; }
-.ba-out { border-color:#e65100; color:#e65100; background:#fff; }
-.ba-out:hover { background:#fff3e0; }
-.empty { padding:48px; text-align:center; color:#9aaa9a; font-size:.88rem; }
-.mo { position:fixed; inset:0; z-index:999; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.48); backdrop-filter:blur(2px); padding:16px; }
-.mb { background:#f4f6f0; border-radius:20px; width:100%; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.22); }
-.mh { padding:22px 28px; flex-shrink:0; display:flex; justify-content:space-between; align-items:center; border-radius:20px 20px 0 0; }
-.mh-title { color:#fff; font-size:1.15rem; font-weight:700; margin:0; }
-.mh-sub   { color:rgba(255,255,255,.68); font-size:.82rem; margin:4px 0 0; }
-.mx { background:rgba(255,255,255,.15); border:none; width:32px; height:32px; border-radius:50%; cursor:pointer; color:#fff; font-size:1.1rem; display:flex; align-items:center; justify-content:center; }
-.mx:hover { background:rgba(255,255,255,.28); }
-.mbody { padding:22px 28px; overflow-y:auto; flex:1; }
-.mbody::-webkit-scrollbar { width:4px; }
-.mbody::-webkit-scrollbar-thumb { background:#d1e8d1; border-radius:10px; }
-.mfoot { padding:14px 28px; border-top:1px solid #e4ebe4; display:flex; gap:12px; flex-shrink:0; }
-.sc2 { background:#fff; border-radius:12px; padding:18px 20px; margin-bottom:14px; border:1px solid #e4ebe4; }
-.sc2-title { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin-bottom:14px; }
-.flabel { display:block; font-size:.78rem; font-weight:700; color:#3a6a3a; margin-bottom:5px; text-transform:uppercase; letter-spacing:.4px; }
-.fi { width:100%; padding:10px 14px; border:1.5px solid #ccdacc; border-radius:10px; font-size:.9rem; font-family:Arial,sans-serif; outline:none; background:#fff; color:#07713c; box-sizing:border-box; transition:border-color .2s,box-shadow .2s; }
-.fi:focus { border-color:#07713c; box-shadow:0 0 0 3px rgba(7,113,60,.1); }
-.fi::placeholder { color:#a8b8a8; font-style:italic; }
-.btn-cancel { flex:1; padding:12px; background:#fff; border:1.5px solid #ccdacc; border-radius:10px; cursor:pointer; font-size:.9rem; font-weight:600; color:#4a6a4a; font-family:Arial,sans-serif; }
-.btn-cancel:hover { background:#f4f6f0; }
-.btn-confirm { flex:2; padding:12px; border:none; border-radius:10px; cursor:pointer; font-size:.9rem; font-weight:700; color:#fff; font-family:Arial,sans-serif; display:inline-flex; align-items:center; justify-content:center; gap:7px; }
-.btn-confirm:disabled { opacity:.6; cursor:not-allowed; }
-.alert-ok { padding:10px 15px; border-radius:8px; background:#e8f5e9; border-left:3px solid #4cae4c; color:#1b5e20; font-size:.84rem; margin-bottom:14px; }
-.pmg { display:flex; gap:8px; }
-.pm { flex:1; padding:8px 4px; border-radius:8px; cursor:pointer; font-size:.74rem; font-weight:700; font-family:Arial,sans-serif; text-align:center; transition:all .15s; border:1.5px solid #ccdacc; background:#fff; color:#8a9a8a; display:flex; flex-direction:column; align-items:center; gap:4px; }
-.brow { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #eef4ee; font-size:.9rem; }
-.brow:last-child { border:none; }
-.btotal { display:flex; justify-content:space-between; padding:11px 0 3px; font-size:1.05rem; }
-`;
-
-const PM_METHODS = [
-  { key: "cash",          label: "Cash",  Icon: RiCoinLine       },
-  { key: "card",          label: "Card",  Icon: RiBankCard2Line  },
-  { key: "gcash",         label: "GCash", Icon: RiSmartphoneLine },
-  { key: "bank_transfer", label: "Bank",  Icon: RiBankLine       },
-];
+const inputStyle = { width: "100%", padding: "10px 14px", border: "2px solid #e8e8e8", borderRadius: "8px", fontSize: "0.9rem", outline: "none", fontFamily: "Arial,sans-serif", boxSizing: "border-box", background: "white", transition: "border 0.2s" };
+const labelStyle = { display: "block", fontSize: "0.8rem", fontWeight: "700", color: "#555", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.4px" };
 
 export default function CheckOut() {
-  const [reservations, setReservations] = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [search,       setSearch]       = useState("");
-  const [showModal,    setShowModal]    = useState(false);
-  const [selected,     setSelected]     = useState(null);
-  const [processing,   setProcessing]   = useState(false);
-  const [payMethod,    setPayMethod]    = useState("cash");
-  const [extraChg,     setExtraChg]     = useState("");
-  const [extraNote,    setExtraNote]    = useState("");
-  const [received,     setReceived]     = useState("");
-  const [fullyPaid,    setFullyPaid]    = useState(false);
-  const [successMsg,   setSuccessMsg]   = useState("");
+  const [reservations,   setReservations]   = useState([]);
+  const [loading,        setLoading]        = useState(true);
+  const [search,         setSearch]         = useState("");
+  const [showModal,      setShowModal]      = useState(false);
+  const [selected,       setSelected]       = useState(null);
+  const [processing,     setProcessing]     = useState(false);
+  const [paymentMethod,  setPaymentMethod]  = useState("cash");
+  const [extraCharges,   setExtraCharges]   = useState("");
+  const [extraNote,      setExtraNote]      = useState("");
+  const [amountReceived, setAmountReceived] = useState("");
+  const [fullyPaid,      setFullyPaid]      = useState(false);
+  const [successMsg,     setSuccessMsg]     = useState("");
+  const [requesting,     setRequesting]     = useState(null); // reservation id being requested
 
   const today = new Date().toISOString().split("T")[0];
-
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchData = async () => {
     setLoading(true);
     const { data } = await supabase.from("reservations").select("*").eq("status", "checked_in").order("check_out");
-    setReservations(data || []); setLoading(false);
+    setReservations(data || []);
+    setLoading(false);
   };
 
-  const openModal = (res) => {
-    setSelected(res); setExtraChg(""); setExtraNote(""); setPayMethod("cash");
+  const getInspectionCharges = (res) => { try { return JSON.parse(res?.inspection_charges || "[]"); } catch { return []; } };
+
+  const handleRequestInspection = async (res) => {
+    setRequesting(res.id);
+    await supabase.from("reservations")
+      .update({ inspection_status: "requested" })
+      .eq("id", res.id);
+    // Update local state immediately
+    setReservations(prev => prev.map(r => r.id === res.id ? { ...r, inspection_status: "requested" } : r));
+    setRequesting(null);
+  };
+
+  const openCheckOut = (res) => {
+    setSelected(res);
+    setExtraCharges(""); setExtraNote(""); setPaymentMethod("cash");
     setFullyPaid(false); setSuccessMsg("");
-    const bal = parseFloat(res.total_amount || 0) - parseFloat(res.amount_paid || 0);
-    setReceived(bal > 0 ? bal.toString() : "0");
+    const balance = parseFloat(res.total_amount || 0) - parseFloat(res.amount_paid || 0);
+    setAmountReceived(balance > 0 ? balance.toString() : "0");
     setShowModal(true);
   };
 
-  const base  = parseFloat(selected?.total_amount || 0);
-  const paid  = parseFloat(selected?.amount_paid  || 0);
-  const extra = parseFloat(extraChg || 0);
-  const grand = base + extra;
-  const bal   = Math.max(0, grand - paid);
-  const chg   = fullyPaid ? 0 : Math.max(0, parseFloat(received || 0) - bal);
+  const getAdditionalCharges = (res) => { try { return JSON.parse(res?.additional_charges || "[]"); } catch { return []; } };
+
+  const basTotal        = parseFloat(selected?.total_amount || 0);
+  const alreadyPaid     = parseFloat(selected?.amount_paid  || 0);
+  const extra           = parseFloat(extraCharges           || 0);
+  const additionalTotal = selected ? getAdditionalCharges(selected).reduce((s, c) => s + parseFloat(c.amount || 0), 0) : 0;
+  const inspectionTotal = selected ? getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0) : 0;
+  const grandTotal      = basTotal + extra + additionalTotal + inspectionTotal;
+  const balanceDue      = Math.max(0, grandTotal - alreadyPaid);
+  const change          = fullyPaid ? 0 : Math.max(0, parseFloat(amountReceived || 0) - balanceDue);
 
   const handleCheckOut = async () => {
+    if (!selected) return;
     setProcessing(true);
-    await supabase.from("reservations").update({ status: "checked_out", total_amount: grand, payment_method: payMethod, amount_paid: grand, extra_charges: extra, extra_charges_note: extraNote, checked_out_at: new Date().toISOString() }).eq("id", selected.id);
-    await supabase.from("rooms").update({ status: "available" }).eq("id", selected.room_id);
-    setProcessing(false); setSuccessMsg("Guest successfully checked out! Room is now available.");
-    fetchData(); setTimeout(() => { setShowModal(false); setSuccessMsg(""); }, 2000);
+
+    // Snapshot ALL values from current state/selected RIGHT NOW
+    // so re-renders cannot affect them mid-async
+    const snap = {
+      id:               selected.id,
+      guestName:        selected.guest_name,
+      roomNumber:       selected.room_number,
+      roomId:           selected.room_id,
+      basTotal:         parseFloat(selected.total_amount || 0),
+      alreadyPaid:      parseFloat(selected.amount_paid  || 0),
+      extraAmt:         parseFloat(extraCharges || 0),
+      extraNoteVal:     extraNote,
+      payMethod:        paymentMethod,
+      addCharges:       getAdditionalCharges(selected),
+      inspCharges:      getInspectionCharges(selected),
+    };
+    const snapAddTotal   = snap.addCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    const snapInspTotal  = snap.inspCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    const snapGrandTotal = snap.basTotal + snap.extraAmt + snapAddTotal + snapInspTotal;
+
+    // 1. Update reservation status
+    const { error: resError } = await supabase
+      .from("reservations")
+      .update({
+        status:         "checked_out",
+        total_amount:   snapGrandTotal,
+        payment_method: snap.payMethod,
+        amount_paid:              snapGrandTotal,
+        extra_charges:            snap.extraAmt,
+        extra_charges_note:       snap.extraNoteVal,
+        checked_out_at:           new Date().toISOString(),
+      })
+      .eq("id", snap.id);
+
+    if (resError) {
+      alert("Checkout failed: " + resError.message);
+      setProcessing(false);
+      return;
+    }
+
+    // 2. Update room status
+    await supabase.from("rooms").update({ status: "available" }).eq("id", snap.roomId);
+
+    // 3. Remove guest from list immediately
+    setReservations(prev => prev.filter(r => r.id !== snap.id));
+
+    // 4. Close modal and clear state
+    setShowModal(false);
+    setSelected(null);
+    setProcessing(false);
+    setExtraCharges("");
+    setExtraNote("");
+    setFullyPaid(false);
+    setAmountReceived("");
+
+    // 5. Log in background
+    logActivity({
+      action:      `Checked out guest: ${snap.guestName}`,
+      category:    "check_out",
+      details:     `Room ${snap.roomNumber} | Total ₱${snapGrandTotal.toLocaleString()} | Extra ₱${snap.extraAmt.toLocaleString()}`,
+      entity_type: "reservation",
+      entity_id:   snap.id,
+    });
   };
 
-  const filtered = reservations.filter(r => r.guest_name.toLowerCase().includes(search.toLowerCase()) || (r.room_number||"").includes(search));
-  const overdue  = filtered.filter(r => r.check_out < today);
-  const todayCO  = filtered.filter(r => r.check_out === today);
-  const upcoming = filtered.filter(r => r.check_out > today);
+  const filtered = reservations.filter(r =>
+    r.guest_name.toLowerCase().includes(search.toLowerCase()) ||
+    (r.room_number || "").includes(search)
+  );
 
-  const STAT_CARDS = [
-    { lbl: "Currently Staying",  val: reservations.length,                                    Icon: RiHome4Line,        bg: "#e8f5e9", c: "#1b5e20" },
-    { lbl: "Overdue Check-Outs", val: reservations.filter(r => r.check_out < today).length,   Icon: RiAlertLine,        bg: "#fce4ec", c: "#c62828" },
-    { lbl: "Checkout Today",     val: reservations.filter(r => r.check_out === today).length, Icon: RiLogoutBoxLine,    bg: "#fff3e0", c: "#e65100" },
-    { lbl: "Upcoming",           val: reservations.filter(r => r.check_out > today).length,   Icon: RiCalendarTodoLine, bg: "#e3f2fd", c: "#1565c0" },
-  ];
+  const overdueList   = filtered.filter(r => r.check_out < today);
+  const todayList     = filtered.filter(r => r.check_out === today);
+  const upcomingList  = filtered.filter(r => r.check_out > today);
 
-  const SectionTable = ({ title, data, dotColor }) => {
-    if (!data.length) return null;
-    const cols = "2fr .8fr 1fr 1fr .8fr 1fr 1fr 1fr";
+  const nightsStayed = (checkIn) => Math.max(1, Math.floor((new Date() - new Date(checkIn)) / 86400000));
+  const nightsLeft   = (checkOut) => Math.max(0, Math.ceil((new Date(checkOut) - new Date()) / 86400000));
+
+  /* ── TABLE ROW (overdue + today) ── */
+  const GuestRow = ({ res }) => {
+    const nights    = Math.max(0, (new Date(res.check_out) - new Date(res.check_in)) / 86400000);
+    const isOverdue = res.check_out < today;
+    const isToday   = res.check_out === today;
     return (
-      <div className="section-block">
-        <div className="section-hdr"><div className="section-dot" style={{ background: dotColor }} /><div className="section-lbl">{title} ({data.length})</div></div>
-        <div className="tc">
-          <div className="tc-head" style={{ gridTemplateColumns: cols }}>
-            {["Guest","Room","Check-In","Check-Out","Nights","Total","Status","Action"].map(h => <div key={h} className="th">{h}</div>)}
+      <tr style={{ borderBottom: "1px solid #f5f5f5" }}
+        onMouseOver={e => e.currentTarget.style.background = "#fafafa"}
+        onMouseOut={e => e.currentTarget.style.background = "white"}>
+        <td style={{ padding: "14px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "linear-gradient(135deg,#e65100,#ff9800)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: "700", fontSize: "0.85rem", flexShrink: 0 }}>
+              {res.guest_name.slice(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <div style={{ fontWeight: "600", fontSize: "0.92rem" }}>{res.guest_name}</div>
+              {res.guest_phone && <div style={{ fontSize: "0.78rem", color: "#aaa" }}>{res.guest_phone}</div>}
+            </div>
           </div>
-          <div className="tc-scroll">
-            {data.map(res => {
-              const nights = Math.max(0, (new Date(res.check_out) - new Date(res.check_in)) / 86400000);
-              const isOD = res.check_out < today; const isTD = res.check_out === today;
-              return (
-                <div key={res.id} className="tr" style={{ gridTemplateColumns: cols }}>
-                  <div className="rg">
-                    <div className="av" style={isOD ? { background: "linear-gradient(135deg,#e65100,#ff9800)" } : {}}>{res.guest_name.slice(0,2).toUpperCase()}</div>
-                    <div><div className="rg-name">{res.guest_name}</div>{res.guest_phone && <div className="rg-sub">{res.guest_phone}</div>}</div>
-                  </div>
-                  <div className="cell-room">{res.room_number||"—"}</div>
-                  <div className="cell-date">{res.check_in}</div>
-                  <div className="cell-date" style={{ color: isOD?"#e53935":"inherit", fontWeight: isOD?"700":"400" }}>{res.check_out}</div>
-                  <div style={{ fontSize:".84rem",color:"#6b7a6b" }}>{nights}n</div>
-                  <div className="cell-amt">₱{parseFloat(res.total_amount||0).toLocaleString()}</div>
-                  <div><span className="pill" style={{ background:isOD?"#fce4ec":isTD?"#fff8e1":"#e3f2fd", color:isOD?"#c62828":isTD?"#f57f17":"#1565c0" }}>
-                    {isOD ? <><RiAlertLine size={10} /> Overdue</> : isTD ? "Today" : "Upcoming"}
-                  </span></div>
-                  <div style={{ textAlign:"right" }}>
-                    <button className="ba ba-out" onClick={() => openModal(res)}><RiLogoutBoxLine size={13} /> Check Out</button>
-                  </div>
+        </td>
+        <td style={{ padding: "14px 16px", fontWeight: "700", color: "#1a3c1a" }}>{res.room_number || "—"}</td>
+        <td style={{ padding: "14px 16px", fontSize: "0.88rem", color: "#555" }}>{res.check_in}</td>
+        <td style={{ padding: "14px 16px", fontSize: "0.88rem", color: isOverdue ? "#e53935" : "#555", fontWeight: isOverdue ? "700" : "400" }}>{res.check_out}</td>
+        <td style={{ padding: "14px 16px", fontSize: "0.88rem" }}>{nights} night{nights !== 1 ? "s" : ""}</td>
+        <td style={{ padding: "14px 16px", fontWeight: "700", color: "#1a3c1a" }}>₱{parseFloat(res.total_amount || 0).toLocaleString()}</td>
+        <td style={{ padding: "14px 16px" }}>
+          <span style={{ padding: "3px 10px", borderRadius: "20px", fontSize: "0.75rem", fontWeight: "700", background: isOverdue ? "#fce4ec" : "#fff8e1", color: isOverdue ? "#c62828" : "#f57f17" }}>
+            {isOverdue ? "Overdue" : "Today"}
+          </span>
+        </td>
+        <td style={{ padding: "14px 16px" }}>
+          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+            {res.inspection_status === "cleared" ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", background: "#ecfdf5", color: "#07713c", borderRadius: "8px", fontSize: "0.75rem", fontWeight: "700" }}>
+                <RiCheckDoubleLine size={12} /> Cleared
+              </span>
+            ) : res.inspection_status === "requested" ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", background: "#fff8e1", color: "#f57f17", borderRadius: "8px", fontSize: "0.75rem", fontWeight: "700" }}>
+                <RiToolsLine size={12} /> Inspecting...
+              </span>
+            ) : res.inspection_status === "has_damage" ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", background: "#fce4ec", color: "#c62828", borderRadius: "8px", fontSize: "0.75rem", fontWeight: "700" }}>
+                <RiAlertLine size={12} /> Damage Found
+              </span>
+            ) : (
+              <button onClick={() => handleRequestInspection(res)} disabled={requesting === res.id} style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "8px 12px", background: "#f3e5f5", color: "#6a1b9a", border: "1.5px solid #ce93d8", borderRadius: "8px", cursor: "pointer", fontSize: "0.78rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
+                <RiSearchLine size={13} />{requesting === res.id ? "..." : "Inspect"}
+              </button>
+            )}
+            <button onClick={() => openCheckOut(res)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#e65100", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.85rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
+              <RiLogoutBoxLine size={14} /> Check Out
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  const SectionTable = ({ title, data, dot }) => data.length > 0 && (
+    <div style={{ marginBottom: "24px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+        <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: dot }} />
+        <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: "700", color: "#333" }}>{title} ({data.length})</h3>
+      </div>
+      <div style={{ background: "white", borderRadius: "14px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "Arial,sans-serif" }}>
+          <thead>
+            <tr style={{ background: "#f8f9fa", borderBottom: "2px solid #f0f0f0" }}>
+              {["Guest","Room","Check-In","Check-Out","Nights","Total","Type","Action"].map(h => (
+                <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: "0.78rem", color: "#888", fontWeight: "700", textTransform: "uppercase" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>{data.map(r => <GuestRow key={r.id} res={r} />)}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  /* ── VERTICAL CARD (still staying) ── */
+  const StayingCard = ({ res }) => {
+    const stayed  = nightsStayed(res.check_in);
+    const left    = nightsLeft(res.check_out);
+    const charges = getAdditionalCharges(res);
+    const addTotal = charges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    return (
+      <div style={{ background: "white", borderRadius: "14px", overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", border: "1px solid #e4ebe4", display: "flex" }}>
+        {/* Left green strip */}
+        <div style={{ background: "linear-gradient(180deg,#1565c0,#1976d2)", padding: "18px 16px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minWidth: "90px", flexShrink: 0 }}>
+          <div style={{ fontSize: "0.62rem", color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "2px" }}>Room</div>
+          <div style={{ fontSize: "1.7rem", fontWeight: "700", color: "#fff", lineHeight: 1 }}>{res.room_number}</div>
+          <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: "8px", padding: "5px 10px", marginTop: "10px", textAlign: "center" }}>
+            <div style={{ fontSize: "1rem", fontWeight: "700", color: "#fff", lineHeight: 1 }}>{stayed}</div>
+            <div style={{ fontSize: "0.58rem", color: "rgba(255,255,255,0.65)", textTransform: "uppercase" }}>night{stayed !== 1 ? "s" : ""}</div>
+          </div>
+          <div style={{ marginTop: "8px", fontSize: "0.6rem", color: left <= 2 ? "#ffd54f" : "rgba(255,255,255,0.55)", textAlign: "center", fontWeight: left <= 2 ? "700" : "400" }}>
+            {left === 0 ? "Checkout today" : `${left}d left`}
+          </div>
+        </div>
+        {/* Right body */}
+        <div style={{ padding: "14px 18px", flex: 1, minWidth: 0 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "10px" }}>
+            {[
+              { Icon: RiUserLine,               lbl: "Guest",       val: res.guest_name },
+              { Icon: RiCalendarLine,           lbl: "Check-Out",   val: res.check_out, warn: left <= 1 },
+              { Icon: RiMoneyDollarCircleLine,  lbl: "Room Rate",   val: `₱${parseFloat(res.total_amount || 0).toLocaleString()}` },
+              { Icon: RiCheckboxCircleLine,     lbl: "Payment",     val: res.pay_later ? "At Check-Out" : "Paid", warn: res.pay_later },
+            ].map(({ Icon, lbl, val, warn }) => (
+              <div key={lbl} style={{ background: "#f4f6f0", borderRadius: "8px", padding: "8px 10px" }}>
+                <div style={{ fontSize: "0.64rem", color: "#8a9a8a", fontWeight: "700", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "3px", marginBottom: "2px" }}>
+                  <Icon size={10} />{lbl}
                 </div>
-              );
-            })}
+                <div style={{ fontSize: "0.84rem", fontWeight: "600", color: warn ? "#e65100" : "#222", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
+              </div>
+            ))}
+          </div>
+          {res.notes && (
+            <div style={{ display: "flex", gap: "6px", background: "#fffde7", border: "1px solid #fff176", borderRadius: "7px", padding: "7px 10px", marginBottom: "10px", fontSize: "0.79rem", color: "#555", lineHeight: 1.4 }}>
+              <RiStickyNoteLine size={13} color="#f59e0b" style={{ flexShrink: 0, marginTop: "1px" }} />
+              {res.notes}
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            {addTotal > 0 ? (
+              <span style={{ fontSize: "0.78rem", color: "#6a1b9a", fontWeight: "600", background: "#f3e5f5", padding: "3px 9px", borderRadius: "10px" }}>
+                +₱{addTotal.toLocaleString()} extra charges
+              </span>
+            ) : <span />}
+            <div style={{ display: "flex", gap: "7px", alignItems: "center" }}>
+              {res.inspection_status === "cleared" ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "5px 11px", background: "#ecfdf5", color: "#07713c", borderRadius: "8px", fontSize: "0.75rem", fontWeight: "700", border: "1px solid #a7f3d0" }}>
+                  <RiCheckDoubleLine size={12} /> Room Cleared
+                </span>
+              ) : res.inspection_status === "requested" ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "5px 11px", background: "#fff8e1", color: "#f57f17", borderRadius: "8px", fontSize: "0.75rem", fontWeight: "700" }}>
+                  <RiToolsLine size={12} /> Inspecting...
+                </span>
+              ) : res.inspection_status === "has_damage" ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "5px 11px", background: "#fce4ec", color: "#c62828", borderRadius: "8px", fontSize: "0.75rem", fontWeight: "700" }}>
+                  <RiAlertLine size={12} /> Damage Found
+                </span>
+              ) : (
+                <button onClick={() => handleRequestInspection(res)} disabled={requesting === res.id} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 14px", background: "#f3e5f5", color: "#6a1b9a", border: "1.5px solid #ce93d8", borderRadius: "8px", cursor: "pointer", fontSize: "0.82rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
+                  <RiSearchLine size={13} />{requesting === res.id ? "..." : "Request Inspection"}
+                </button>
+              )}
+              <button onClick={() => openCheckOut(res)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#1565c0", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.82rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
+                <RiLogoutBoxLine size={13} /> Check Out
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -182,103 +305,261 @@ export default function CheckOut() {
   };
 
   return (
-    <>
-      <style>{CSS}</style>
-      <div className="page">
-        <div className="page-hdr">
-          <div><h2 className="page-title">Check-Out</h2><p className="page-sub">Process guest departures and collect final payments</p></div>
-        </div>
-
-        <div className="sc-4">
-          {STAT_CARDS.map(({ lbl, val, Icon, bg, c }) => (
-            <div key={lbl} className="sc" style={{ background: bg }}>
-              <div className="sc-row"><span className="sc-ico"><Icon size={20} color={c} /></span><span className="sc-lbl" style={{ color: c }}>{lbl}</span></div>
-              <div className="sc-val">{val}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="fbar">
-          <input className="finput" type="text" placeholder="Search guest or room..." value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-
-        {loading ? <div className="empty">Loading...</div>
-          : filtered.length === 0
-            ? <div style={{ background:"#fff",borderRadius:"14px",padding:"60px",textAlign:"center",border:"1px solid #e4ebe4" }}>
-                <RiHome4Line size={48} color="#d1e8d1" style={{ marginBottom:"12px" }} />
-                <div style={{ fontWeight:"700",color:"#333" }}>No guests currently checked in</div>
-              </div>
-            : <><SectionTable title="Overdue — Should Have Checked Out" data={overdue}  dotColor="#c62828" /><SectionTable title="Checking Out Today" data={todayCO} dotColor="#e65100" /><SectionTable title="Still Staying" data={upcoming} dotColor="#1565c0" /></>
-        }
+    <div style={{ padding: "28px 32px", fontFamily: "Arial,sans-serif", background: "#f0f2f0", minHeight: "100vh" }}>
+      <div style={{ marginBottom: "24px" }}>
+        <h2 style={{ margin: 0, fontSize: "1.6rem", fontWeight: "700", color: "#1a3c1a" }}>Check-Out</h2>
+        <p style={{ margin: "4px 0 0", color: "#888", fontSize: "0.9rem" }}>Process guest departures and collect final payments</p>
       </div>
 
-      {showModal && selected && (
-        <div className="mo" onClick={() => setShowModal(false)}>
-          <div className="mb" style={{ maxWidth: "520px" }} onClick={e => e.stopPropagation()}>
-            <div className="mh" style={{ background: "linear-gradient(135deg,#bf360c,#e65100)" }}>
-              <div><p className="mh-title">Process Check-Out</p><p className="mh-sub">Review charges and collect final payment</p></div>
-              <button className="mx" onClick={() => setShowModal(false)}>×</button>
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
+        {[
+          { label: "Currently Staying",  value: reservations.length,                                     Icon: RiUserLine,          bg: "#e8f5e9", color: "#1b5e20" },
+          { label: "Overdue Check-Outs", value: reservations.filter(r => r.check_out < today).length,   Icon: RiErrorWarningLine,  bg: "#fce4ec", color: "#c62828" },
+          { label: "Checking Out Today", value: reservations.filter(r => r.check_out === today).length, Icon: RiLogoutBoxLine,     bg: "#fff3e0", color: "#e65100" },
+          { label: "Upcoming",           value: reservations.filter(r => r.check_out > today).length,   Icon: RiCalendarLine,      bg: "#e3f2fd", color: "#1565c0" },
+        ].map(({ label, value, Icon, bg, color }) => (
+          <div key={label} style={{ background: bg, borderRadius: "14px", padding: "20px 24px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+              <Icon size={18} color={color} />
+              <span style={{ fontSize: "0.85rem", color, fontWeight: "600" }}>{label}</span>
             </div>
-            <div className="mbody">
-              {successMsg && <div className="alert-ok">✓ {successMsg}</div>}
-              <div className="sc2">
-                <div className="sc2-title" style={{ color:"#e65100" }}>Reservation Summary</div>
-                <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px" }}>
-                  {[["Guest",selected.guest_name],["Room",`Room ${selected.room_number}`],["Check-In",selected.check_in],["Check-Out",selected.check_out],["Duration",`${Math.max(0,(new Date(selected.check_out)-new Date(selected.check_in))/86400000)} nights`],["Room Charge",`₱${parseFloat(selected.total_amount||0).toLocaleString()}`]].map(([k,v]) => (
-                    <div key={k} style={{ background:"#f8faf8",borderRadius:"8px",padding:"10px 12px" }}><div style={{ color:"#9aaa9a",fontSize:".72rem",fontWeight:"700",textTransform:"uppercase" }}>{k}</div><div style={{ fontWeight:"600",color:"#07713c",marginTop:"2px",fontSize:".88rem" }}>{v}</div></div>
+            <div style={{ fontSize: "2rem", fontWeight: "700", color: "#1a1a1a" }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Search */}
+      <div style={{ background: "white", borderRadius: "14px", padding: "16px 24px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", marginBottom: "20px" }}>
+        <input type="text" placeholder="🔍  Search guest name or room number..."
+          value={search} onChange={e => setSearch(e.target.value)} style={inputStyle}
+          onFocus={e => e.target.style.borderColor = "#e65100"}
+          onBlur={e => e.target.style.borderColor = "#e8e8e8"} />
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "60px", color: "#aaa" }}>Loading...</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ background: "white", borderRadius: "14px", padding: "60px", textAlign: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+          <div style={{ width: "72px", height: "72px", borderRadius: "50%", background: "#e8f5e9", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+            <RiHotelBedLine size={32} color="#1b5e20" />
+          </div>
+          <div style={{ fontWeight: "700", color: "#333", fontSize: "1.1rem" }}>No guests currently checked in</div>
+          <div style={{ color: "#aaa", marginTop: "6px" }}>All rooms are available.</div>
+        </div>
+      ) : (
+        <>
+          {/* Overdue & Today — table layout */}
+          <SectionTable title="Overdue — Should Have Checked Out" data={overdueList} dot="#c62828" />
+          <SectionTable title="Checking Out Today"                data={todayList}   dot="#e65100" />
+
+          {/* Still Staying — vertical card layout */}
+          {upcomingList.length > 0 && (
+            <div style={{ marginBottom: "24px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#1565c0" }} />
+                <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: "700", color: "#333" }}>Still Staying ({upcomingList.length})</h3>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {upcomingList.map(r => <StayingCard key={r.id} res={r} />)}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── CHECK-OUT MODAL ── */}
+      {showModal && selected && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px" }}>
+          <div style={{ background: "#f8f9fa", borderRadius: "20px", width: "520px", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", fontFamily: "Arial,sans-serif" }}>
+            <div style={{ background: "linear-gradient(135deg,#bf360c,#e65100)", borderRadius: "20px 20px 0 0", padding: "24px 30px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h3 style={{ margin: 0, color: "white", fontSize: "1.2rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <RiLogoutBoxLine size={20} /> Process Check-Out
+                </h3>
+                <p style={{ margin: "4px 0 0", color: "rgba(255,255,255,0.7)", fontSize: "0.82rem" }}>Review charges and collect final payment</p>
+              </div>
+              <button onClick={() => setShowModal(false)} style={{ background: "rgba(255,255,255,0.15)", border: "none", width: "34px", height: "34px", borderRadius: "50%", cursor: "pointer", color: "white", fontSize: "1.1rem" }}>×</button>
+            </div>
+
+            <div style={{ padding: "24px 30px" }}>
+              {successMsg && (
+                <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", color: "#1b5e20", padding: "12px 16px", borderRadius: "8px", marginBottom: "16px", fontSize: "0.88rem", fontWeight: "600" }}>
+                  ✅ {successMsg}
+                </div>
+              )}
+
+              {/* Summary */}
+              <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "5px" }}>
+                  <RiUserLine size={13} /> Reservation Summary
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  {[
+                    ["Guest",       selected.guest_name],
+                    ["Room",        `Room ${selected.room_number}`],
+                    ["Check-In",    selected.check_in],
+                    ["Check-Out",   selected.check_out],
+                    ["Duration",    `${Math.max(0,(new Date(selected.check_out)-new Date(selected.check_in))/86400000)} nights`],
+                    ["Room Charge", `₱${parseFloat(selected.total_amount||0).toLocaleString()}`],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{ background: "#f8f9fa", borderRadius: "8px", padding: "10px 12px" }}>
+                      <div style={{ color: "#aaa", fontSize: "0.75rem", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
+                      <div style={{ fontWeight: "600", color: "#222", marginTop: "2px", fontSize: "0.88rem" }}>{v}</div>
+                    </div>
                   ))}
                 </div>
               </div>
-              <div className="sc2">
-                <div className="sc2-title" style={{ color:"#e65100" }}>Extra Charges (Optional)</div>
-                <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px" }}>
-                  <div><label className="flabel">Amount (₱)</label><input type="number" className="fi" value={extraChg} onChange={e=>setExtraChg(e.target.value)} placeholder="0.00" /></div>
-                  <div><label className="flabel">Reason</label><input className="fi" value={extraNote} onChange={e=>setExtraNote(e.target.value)} placeholder="e.g. Room service" /></div>
+
+              {/* Extra Charges */}
+              <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px" }}>Extra Charges at Check-Out (Optional)</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div>
+                    <label style={labelStyle}>Amount (₱)</label>
+                    <input type="number" value={extraCharges} onChange={e => setExtraCharges(e.target.value)} placeholder="0.00" style={inputStyle} onFocus={e => e.target.style.borderColor="#e65100"} onBlur={e => e.target.style.borderColor="#e8e8e8"} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Reason</label>
+                    <input value={extraNote} onChange={e => setExtraNote(e.target.value)} placeholder="e.g. Room service, minibar" style={inputStyle} onFocus={e => e.target.style.borderColor="#e65100"} onBlur={e => e.target.style.borderColor="#e8e8e8"} />
+                  </div>
                 </div>
               </div>
-              <div className="sc2">
-                <div className="sc2-title" style={{ color:"#e65100" }}>Payment Method</div>
-                <div className="pmg">
-                  {PM_METHODS.map(({ key, label, Icon }) => (
-                    <button key={key} type="button" className="pm" style={payMethod===key?{borderColor:"#e65100",background:"#fff3e0",color:"#e65100"}:{}} onClick={() => setPayMethod(key)}>
-                      <Icon size={16} />{label}
+
+              {/* Payment Method */}
+              <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "5px" }}>
+                  <RiMoneyDollarCircleLine size={13} /> Payment Method
+                </div>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  {["cash","card","gcash","bank_transfer"].map(m => (
+                    <button key={m} onClick={() => setPaymentMethod(m)} style={{ flex: 1, padding: "8px 4px", border: `2px solid ${paymentMethod===m?"#e65100":"#e8e8e8"}`, borderRadius: "8px", background: paymentMethod===m?"#fff3e0":"white", cursor: "pointer", fontSize: "0.75rem", fontWeight: "700", color: paymentMethod===m?"#e65100":"#888", fontFamily: "Arial,sans-serif" }}>
+                      {m==="cash"?"Cash":m==="card"?"Card":m==="gcash"?"GCash":"Bank"}<br/>
+                      <span style={{ fontSize: "0.65rem", fontWeight: "400", color: "#aaa" }}>{m==="cash"?"💵":m==="card"?"💳":m==="gcash"?"📱":"🏦"}</span>
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="sc2">
-                <div className="sc2-title" style={{ color:"#e65100" }}>Bill Breakdown</div>
-                <div className="brow"><span style={{ color:"#6b7a6b" }}>Room Charge</span><span style={{ fontWeight:"600" }}>₱{base.toLocaleString()}</span></div>
-                <div className="brow"><span style={{ color:"#6b7a6b" }}>Extra Charges</span><span style={{ fontWeight:"600" }}>₱{extra.toLocaleString()}</span></div>
-                <div className="brow"><span style={{ color:"#6b7a6b" }}>Already Paid</span><span style={{ fontWeight:"600",color:"#4caf50" }}>-₱{paid.toLocaleString()}</span></div>
-                <div className="btotal"><span style={{ fontWeight:"700",color:"#333" }}>Balance Due</span><span style={{ fontWeight:"700",color:bal>0?"#e65100":"#4caf50",fontSize:"1.2rem" }}>₱{bal.toLocaleString()}</span></div>
-              </div>
-              <div className="sc2">
-                <div className="sc2-title" style={{ color:"#e65100" }}>Collect Payment</div>
-                <div onClick={() => { setFullyPaid(!fullyPaid); if(!fullyPaid) setReceived(bal.toString()); }} style={{ display:"flex",alignItems:"center",gap:"12px",padding:"12px 16px",borderRadius:"10px",border:`1.5px solid ${fullyPaid?"#07713c":"#ccdacc"}`,background:fullyPaid?"#e8f5e9":"#f8faf8",cursor:"pointer",marginBottom:"14px" }}>
-                  <div style={{ width:"22px",height:"22px",borderRadius:"50%",border:`2px solid ${fullyPaid?"#07713c":"#ccc"}`,background:fullyPaid?"#07713c":"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>
-                    {fullyPaid && <span style={{ color:"white",fontSize:".75rem",fontWeight:"700" }}>✓</span>}
+
+              {/* Notes */}
+              {selected?.notes && (
+                <div style={{ background: "#fffde7", border: "1px solid #fff176", borderRadius: "10px", padding: "10px 14px", marginBottom: "16px", display: "flex", gap: "8px", alignItems: "flex-start", fontSize: "0.83rem", color: "#555" }}>
+                  <RiStickyNoteLine size={14} color="#f59e0b" style={{ flexShrink: 0, marginTop: "1px" }} />
+                  <span><strong>Guest Notes:</strong> {selected.notes}</span>
+                </div>
+              )}
+
+              {/* Inspection result banner in modal */}
+              {selected?.inspection_status === "has_damage" && (
+                <div style={{ background: "#fce4ec", border: "1.5px solid #ef9a9a", borderRadius: "10px", padding: "12px 16px", marginBottom: "16px", display: "flex", gap: "10px", alignItems: "flex-start" }}>
+                  <RiAlertLine size={18} color="#c62828" style={{ flexShrink: 0, marginTop: "1px" }} />
+                  <div>
+                    <div style={{ fontWeight: "700", color: "#c62828", fontSize: "0.88rem", marginBottom: "4px" }}>Damage Reported by Maintenance</div>
+                    {selected.inspection_notes && <div style={{ fontSize: "0.82rem", color: "#555" }}>{selected.inspection_notes}</div>}
+                    {getInspectionCharges(selected).length > 0 && (
+                      <div style={{ marginTop: "8px" }}>
+                        {getInspectionCharges(selected).map((c, i) => (
+                          <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", color: "#333", padding: "2px 0" }}>
+                            <span>• {c.name}</span><span style={{ fontWeight: "700", color: "#c62828" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div><div style={{ fontWeight:"700",fontSize:".9rem",color:fullyPaid?"#1b5e20":"#333" }}>Guest has fully paid</div><div style={{ fontSize:".78rem",color:"#8a9a8a",marginTop:"1px" }}>Mark as fully settled</div></div>
+                </div>
+              )}
+              {selected?.inspection_status === "cleared" && (
+                <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "10px", padding: "10px 16px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", color: "#065f46", fontWeight: "600" }}>
+                  <RiCheckDoubleLine size={16} color="#07713c" /> Room inspected and cleared — no damage reported.
+                </div>
+              )}
+
+              {/* Bill Breakdown */}
+              <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px" }}>Bill Breakdown</div>
+                {[
+                  ["Room Charge", `₱${basTotal.toLocaleString()}`],
+                  ...(additionalTotal > 0 ? [["In-House Charges", `₱${additionalTotal.toLocaleString()}`]] : []),
+                  ...(getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0) > 0 ? [["Damage / Inspection Charges", `₱${getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0).toLocaleString()}`]] : []),
+                  ...(extra > 0 ? [["Extra Charges (Check-Out)", `₱${extra.toLocaleString()}`]] : []),
+                  ["Already Paid", `-₱${alreadyPaid.toLocaleString()}`],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
+                    <span style={{ color: "#555" }}>{k}</span>
+                    <span style={{ fontWeight: "600", color: k === "Already Paid" ? "#4caf50" : "#333" }}>{v}</span>
+                  </div>
+                ))}
+                {selected?.pay_later && alreadyPaid === 0 && (
+                  <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "8px", padding: "8px 12px", marginTop: "8px", fontSize: "0.8rem", color: "#f57f17", fontWeight: "600" }}>
+                    Guest opted to pay at check-out
+                  </div>
+                )}
+                {getAdditionalCharges(selected).length > 0 && (
+                  <div style={{ marginTop: "8px" }}>
+                    <div style={{ fontSize: "0.72rem", color: "#aaa", fontWeight: "700", textTransform: "uppercase", marginBottom: "4px" }}>In-House Charge Details</div>
+                    {getAdditionalCharges(selected).map(c => (
+                      <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "#666", padding: "2px 0" }}>
+                        <span>• {c.name}</span><span style={{ fontWeight: "600" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 4px", fontSize: "1.05rem" }}>
+                  <span style={{ fontWeight: "700", color: "#333" }}>Balance Due</span>
+                  <span style={{ fontWeight: "700", color: balanceDue > 0 ? "#e65100" : "#4caf50", fontSize: "1.2rem" }}>₱{balanceDue.toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Collect Payment */}
+              <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "20px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "5px" }}>
+                  <RiMoneyDollarCircleLine size={13} /> Collect Payment
+                </div>
+                <div onClick={() => { setFullyPaid(!fullyPaid); if (!fullyPaid) setAmountReceived(balanceDue.toString()); }}
+                  style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", borderRadius: "10px", border: `2px solid ${fullyPaid?"#4caf50":"#e8e8e8"}`, background: fullyPaid?"#e8f5e9":"#f8f9fa", cursor: "pointer", marginBottom: "14px", transition: "all 0.2s" }}>
+                  <div style={{ width: "22px", height: "22px", borderRadius: "50%", border: `2px solid ${fullyPaid?"#4caf50":"#ccc"}`, background: fullyPaid?"#4caf50":"white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {fullyPaid && <span style={{ color: "white", fontSize: "0.75rem", fontWeight: "700" }}>✓</span>}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: "700", fontSize: "0.9rem", color: fullyPaid?"#1b5e20":"#333" }}>Guest has fully paid</div>
+                    <div style={{ fontSize: "0.78rem", color: "#888", marginTop: "1px" }}>Mark as fully settled — no change needed</div>
+                  </div>
                 </div>
                 {!fullyPaid && (
                   <>
-                    <div style={{ marginBottom:"12px" }}><label className="flabel">Amount Received (₱)</label><input type="number" className="fi" value={received} onChange={e=>setReceived(e.target.value)} placeholder="Enter amount given by guest" style={{ fontSize:"1rem",fontWeight:"700" }} /></div>
-                    {chg > 0 && <div style={{ background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:"10px",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center" }}><span style={{ color:"#1b5e20",fontWeight:"600",fontSize:".9rem" }}>Change to return</span><span style={{ color:"#1b5e20",fontWeight:"700",fontSize:"1.2rem" }}>₱{chg.toLocaleString()}</span></div>}
+                    <div style={{ marginBottom: "12px" }}>
+                      <label style={labelStyle}>Amount Received (₱)</label>
+                      <input type="number" value={amountReceived} onChange={e => setAmountReceived(e.target.value)}
+                        placeholder="Enter amount given by guest" style={{ ...inputStyle, fontSize: "1rem", fontWeight: "700" }}
+                        onFocus={e => e.target.style.borderColor="#e65100"} onBlur={e => e.target.style.borderColor="#e8e8e8"} />
+                    </div>
+                    {change > 0 && (
+                      <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ color: "#1b5e20", fontWeight: "600", fontSize: "0.9rem" }}>💵 Change to return</span>
+                        <span style={{ color: "#1b5e20", fontWeight: "700", fontSize: "1.2rem" }}>₱{change.toLocaleString()}</span>
+                      </div>
+                    )}
                   </>
                 )}
-                {fullyPaid && <div style={{ background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:"10px",padding:"12px 16px",textAlign:"center" }}><span style={{ color:"#1b5e20",fontWeight:"700",fontSize:".95rem" }}>Payment fully settled — ₱{grand.toLocaleString()}</span></div>}
+                {fullyPaid && (
+                  <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
+                    <span style={{ color: "#1b5e20", fontWeight: "700", fontSize: "0.95rem" }}>✅ Payment fully settled — ₱{grandTotal.toLocaleString()}</span>
+                  </div>
+                )}
               </div>
-            </div>
-            <div className="mfoot">
-              <button className="btn-cancel" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn-confirm" style={{ background:processing?"#a8b8a8":"#e65100",boxShadow:processing?"none":"0 4px 14px rgba(230,81,0,.3)" }} onClick={handleCheckOut} disabled={processing||(!fullyPaid&&!received)}>
-                <RiLogoutBoxLine size={16} />{processing?"Processing…":"Confirm Check-Out & Mark Paid"}
-              </button>
+
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button onClick={() => setShowModal(false)} style={{ flex: 1, padding: "13px", background: "white", border: "2px solid #e0e0e0", borderRadius: "10px", cursor: "pointer", fontSize: "0.92rem", fontWeight: "600", color: "#666", fontFamily: "Arial,sans-serif" }}>Cancel</button>
+                <button onClick={handleCheckOut} disabled={processing || (!fullyPaid && !amountReceived)}
+                  style={{ flex: 2, padding: "13px", background: processing?"#aaa":"#e65100", border: "none", borderRadius: "10px", cursor: processing?"not-allowed":"pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px", boxShadow: "0 4px 12px rgba(230,81,0,0.3)" }}>
+                  <RiLogoutBoxLine size={16} />
+                  {processing ? "Processing..." : "Confirm Check-Out & Mark Paid"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

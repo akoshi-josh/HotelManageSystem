@@ -13,13 +13,18 @@ import CheckIn from "./CheckIn";
 import CheckOut from "./CheckOut";
 import Guests from "./Guests";
 import Settings from "./Settings";
+import Maintenance from "./Maintenance";
+import Pricing from "./Pricing";
+import ActivityLog from "./ActivityLog";
+import InHouse from "./InHouse";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 import supabase from "../supabaseClient";
 
-const ADMIN_ONLY = ["Staff"];
+const ADMIN_ONLY      = ["Staff"];
+const MAINTENANCE_ONLY = ["Maintenance"];
 
 const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -173,37 +178,56 @@ const DD_ITEMS = [
   { Icon: RiSettings3Line, label: "Settings",        nav: "Settings" },
 ];
 
+const ROLE_CFG = {
+  admin:        { label: "Admin",        bg: "#fef3c7", color: "#92400e", border: "#fde68a" },
+  staff:        { label: "Staff",        bg: "#ecfdf5", color: "#07713c", border: "#bbf7d0" },
+  receptionist: { label: "Receptionist", bg: "#e3f2fd", color: "#1565c0", border: "#90caf9" },
+  maintenance:  { label: "Maintenance",  bg: "#fff3e0", color: "#e65100", border: "#ffcc80" },
+};
+
 export default function Dashboard({ onLogout, user }) {
   const [activeNav,    setActiveNav]    = useState("Dashboard");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [navKey,       setNavKey]       = useState(0);
 
   const email    = user?.email    || "";
   const name     = user?.full_name || email.split("@")[0];
   const initials = name.slice(0, 2).toUpperCase();
   const role     = user?.role || "staff";
 
+  // On login, maintenance staff goes straight to Maintenance page
+  useEffect(() => {
+    if (role === "maintenance") setActiveNav("Maintenance");
+  }, [role]);
+
   const handleNav = (key) => {
     if (ADMIN_ONLY.includes(key) && role !== "admin") return;
-    setActiveNav(key); setShowDropdown(false);
+    if (MAINTENANCE_ONLY.includes(key) && role !== "admin" && role !== "maintenance") return;
+    setActiveNav(key);
+    setNavKey(k => k + 1); // force remount so pages always fetch fresh data
+    setShowDropdown(false);
   };
 
   const renderPage = () => {
     if (ADMIN_ONLY.includes(activeNav) && role !== "admin") return <AccessDenied />;
+    if (MAINTENANCE_ONLY.includes(activeNav) && role !== "admin" && role !== "maintenance") return <AccessDenied />;
     switch (activeNav) {
       case "Staff":        return <Staff />;
-      case "Rooms":        return <Rooms />;
+      case "Rooms":        return <Rooms userRole={role} />;
       case "Reservations": return <Reservations />;
-      case "Check-In":     return <CheckIn />;
-      case "Check-Out":    return <CheckOut />;
+      case "Check-In":     return <CheckIn key={`checkin-${navKey}`} />;
+      case "Check-Out":    return <CheckOut key={`checkout-${navKey}`} />;
       case "Guests":       return <Guests />;
-      case "Settings":     return <Settings user={user} />;
+      case "Maintenance":  return <Maintenance user={user} />;
+      case "In-House":     return <InHouse key={`inhouse-${navKey}`} />;
+      case "Pricing":      return <Pricing />;
+      case "Log":          return <ActivityLog />;
+      case "Settings":     return <Settings user={user} userRole={role} />;
       default:             return <DashboardHome />;
     }
   };
 
-  const roleCfg = role === "admin"
-    ? { label: "Admin",      bg: "#fef3c7", color: "#92400e", border: "#fde68a" }
-    : { label: role.charAt(0).toUpperCase() + role.slice(1), bg: "#ecfdf5", color: "#07713c", border: "#bbf7d0" };
+  const roleCfg = ROLE_CFG[role] || ROLE_CFG.staff;
 
   return (
     <>
@@ -215,6 +239,7 @@ export default function Dashboard({ onLogout, user }) {
           onLogout={onLogout}
           userRole={role}
           userEmail={email}
+          userName={name}
         />
 
         <div className="db-main">
@@ -250,11 +275,7 @@ export default function Dashboard({ onLogout, user }) {
                       </div>
 
                       {DD_ITEMS.map(({ Icon, label, nav }) => (
-                        <div
-                          key={label}
-                          className="dd-item"
-                          onClick={() => { if (nav) handleNav(nav); setShowDropdown(false); }}
-                        >
+                        <div key={label} className="dd-item" onClick={() => { if (nav) handleNav(nav); setShowDropdown(false); }}>
                           <span className="dd-icon"><Icon size={16} color="#555" /></span>
                           <span>{label}</span>
                         </div>
@@ -285,10 +306,13 @@ export default function Dashboard({ onLogout, user }) {
 /* ── ACCESS DENIED ── */
 function AccessDenied() {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60vh", fontFamily: "Arial,sans-serif" }}>
-      <RiForbidLine size={64} color="#c62828" style={{ marginBottom: "16px" }} />
-      <h2 style={{ fontSize: "1.5rem", color: "#c62828", margin: "0 0 8px", fontWeight: "700" }}>Access Denied</h2>
-      <p style={{ color: "#888", fontSize: ".95rem" }}>You don't have permission to view this page.</p>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60vh", fontFamily: "Arial,sans-serif", background: "#f4f6f0" }}>
+      <div style={{ width: "96px", height: "96px", borderRadius: "50%", background: "#fce4ec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "20px" }}>
+        <RiForbidLine size={48} color="#c62828" />
+      </div>
+      <h2 style={{ fontSize: "1.4rem", color: "#c62828", margin: "0 0 8px", fontWeight: "700" }}>Access Denied</h2>
+      <p style={{ color: "#8a9a8a", fontSize: ".9rem", margin: 0 }}>You don't have permission to view this page.</p>
+      <p style={{ color: "#aaa", fontSize: ".82rem", marginTop: "6px" }}>Contact your administrator if you need access.</p>
     </div>
   );
 }
@@ -352,7 +376,6 @@ function DashboardHome() {
 
   return (
     <>
-      {/* STAT CARDS */}
       <div className="sc-5">
         {STAT_CARDS.map(({ lbl, val, Icon, bg, color }) => (
           <div key={lbl} className="sc" style={{ background: bg }}>
@@ -365,12 +388,11 @@ function DashboardHome() {
         ))}
       </div>
 
-      {/* TODAY CHECK-INS / CHECK-OUTS */}
       <div className="today-grid">
         {[
-          { title: "Today's Check-Ins",  items: checkIns,  dot: "#4caf50", badgeBg: "#e8f5e9", badgeColor: "#1b5e20" },
-          { title: "Today's Check-Outs", items: checkOuts, dot: "#ff9800", badgeBg: "#fff3e0", badgeColor: "#e65100" },
-        ].map(({ title, items, dot, badgeBg, badgeColor }) => (
+          { title: "Today's Check-Ins",  items: checkIns,  badgeBg: "#e8f5e9", badgeColor: "#1b5e20" },
+          { title: "Today's Check-Outs", items: checkOuts, badgeBg: "#fff3e0", badgeColor: "#e65100" },
+        ].map(({ title, items, badgeBg, badgeColor }) => (
           <div key={title} className="today-card">
             <div className="cc-hdr" style={{ marginBottom: "14px" }}>
               <div className="cc-title">{title}</div>
@@ -381,28 +403,19 @@ function DashboardHome() {
             {items.length === 0
               ? <p style={{ color: "#bbb", fontSize: ".85rem" }}>No entries for today.</p>
               : items.map(r => {
-                const STATUS_DOT = {
-                  confirmed:   "#4caf50",
-                  pending:     "#f57f17",
-                  checked_in:  "#1565c0",
-                  checked_out: "#6a1b9a",
-                };
-                const STATUS_LABEL = {
-                  confirmed:   "Pending",
-                  pending:     "Pending",
-                  checked_in:  "In",
-                  checked_out: "Done",
-                };
-                const dotColor = STATUS_DOT[r.status] || dot;
-                const statusLabel = STATUS_LABEL[r.status] || r.status;
+                const STATUS_DOT   = { confirmed: "#4caf50", pending: "#f57f17", checked_in: "#1565c0", checked_out: "#6a1b9a" };
+                const STATUS_LABEL = { confirmed: "Pending", pending: "Pending", checked_in: "In", checked_out: "Done" };
                 return (
                   <div key={r.id} className="today-row">
                     <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
-                      <div className="today-dot" style={{ background: dotColor }} />
+                      <div className="today-dot" style={{ background: STATUS_DOT[r.status] || "#ccc" }} />
                       <span style={{ fontSize: ".86rem", fontWeight: "600", color: "#333" }}>{r.guest_name}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span style={{ fontSize: ".72rem", fontWeight: "700", padding: "2px 7px", borderRadius: "20px", background: r.status === "checked_out" ? "#f3e5f5" : r.status === "checked_in" ? "#e3f2fd" : "#e8f5e9", color: r.status === "checked_out" ? "#6a1b9a" : r.status === "checked_in" ? "#1565c0" : "#1b5e20" }}>{statusLabel}</span>
+                      <span style={{ fontSize: ".72rem", fontWeight: "700", padding: "2px 7px", borderRadius: "20px",
+                        background: r.status === "checked_out" ? "#f3e5f5" : r.status === "checked_in" ? "#e3f2fd" : "#e8f5e9",
+                        color: r.status === "checked_out" ? "#6a1b9a" : r.status === "checked_in" ? "#1565c0" : "#1b5e20"
+                      }}>{STATUS_LABEL[r.status] || r.status}</span>
                       <span style={{ fontSize: ".82rem", fontWeight: "700", color: "#07713c" }}>Rm {r.room_number}</span>
                     </div>
                   </div>
@@ -413,7 +426,6 @@ function DashboardHome() {
         ))}
       </div>
 
-      {/* BOOKING CHART */}
       <div className="chart-card">
         <div className="cc-hdr">
           <div className="cc-title">Reservation Statistics</div>
@@ -422,23 +434,20 @@ function DashboardHome() {
         <p className="cc-sub">Number of bookings per month</p>
         {chartData.every(d => d.bookings === 0)
           ? <div className="empty">No reservation data yet.</div>
-          : (
-            <ResponsiveContainer width="100%" height={240}>
+          : <ResponsiveContainer width="100%" height={240}>
               <ComposedChart data={chartData} margin={{ top: 4, right: 20, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eef4ee" />
                 <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#7a9a7a" }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#7a9a7a" }} />
                 <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #d1fae5" }} />
                 <Legend />
-                <Bar dataKey="bookings" name="Bookings" fill="#5cb85c" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="bookings" name="Bookings" fill="#5cb85c" radius={[6,6,0,0]} />
                 <Line type="monotone" dataKey="bookings" name="Trend" stroke="#07713c" strokeWidth={2.5} dot={{ fill: "#07713c", r: 4 }} />
               </ComposedChart>
             </ResponsiveContainer>
-          )
         }
       </div>
 
-      {/* REVENUE CHART */}
       <div className="chart-card">
         <div className="cc-hdr">
           <div className="cc-title">Revenue Overview</div>
@@ -447,32 +456,27 @@ function DashboardHome() {
         <p className="cc-sub">Total revenue from checked-out guests per month</p>
         {chartData.every(d => d.revenue === 0)
           ? <div className="empty">No revenue data yet.</div>
-          : (
-            <ResponsiveContainer width="100%" height={240}>
+          : <ResponsiveContainer width="100%" height={240}>
               <ComposedChart data={chartData} margin={{ top: 4, right: 20, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eef4ee" />
                 <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#7a9a7a" }} />
                 <YAxis tick={{ fontSize: 12, fill: "#7a9a7a" }} tickFormatter={v => `₱${v.toLocaleString()}`} />
                 <Tooltip formatter={v => [`₱${v.toLocaleString()}`, "Revenue"]} contentStyle={{ borderRadius: 8, border: "1px solid #d1fae5" }} />
                 <Legend />
-                <Bar dataKey="revenue" name="Revenue (₱)" fill="#ecfdf5" stroke="#5cb85c" strokeWidth={1} radius={[6, 6, 0, 0]} />
+                <Bar dataKey="revenue" name="Revenue (₱)" fill="#ecfdf5" stroke="#5cb85c" strokeWidth={1} radius={[6,6,0,0]} />
                 <Line type="monotone" dataKey="revenue" name="Trend" stroke="#07713c" strokeWidth={2.5} dot={{ fill: "#07713c", r: 4 }} />
               </ComposedChart>
             </ResponsiveContainer>
-          )
         }
       </div>
 
-      {/* RECENT RESERVATIONS TABLE */}
       <div className="tc">
         <div className="tc-hdr">
           <div className="tc-title">Recent Reservations</div>
-          <span className="tc-badge">{recentRes.length} total</span>
+          <span className="tc-badge">{/* count filled below */}Recent</span>
         </div>
         <div className="tc-head" style={{ gridTemplateColumns: "2fr .8fr 1fr 1fr 1fr 1fr" }}>
-          {["Guest","Room","Check-In","Check-Out","Total","Status"].map(h => (
-            <div key={h} className="th">{h}</div>
-          ))}
+          {["Guest","Room","Check-In","Check-Out","Total","Status"].map(h => <div key={h} className="th">{h}</div>)}
         </div>
         <div className="tc-scroll">
           {recentRes.length === 0
@@ -482,7 +486,7 @@ function DashboardHome() {
               return (
                 <div key={res.id} className="tr" style={{ gridTemplateColumns: "2fr .8fr 1fr 1fr 1fr 1fr" }}>
                   <div className="rg">
-                    <div className="av">{(res.guest_name || "G").slice(0, 2).toUpperCase()}</div>
+                    <div className="av">{(res.guest_name || "G").slice(0,2).toUpperCase()}</div>
                     <div style={{ minWidth: 0 }}>
                       <div className="rg-name">{res.guest_name}</div>
                       {res.guest_email && <div className="rg-sub">{res.guest_email}</div>}
@@ -492,11 +496,7 @@ function DashboardHome() {
                   <div className="cell-date">{res.check_in}</div>
                   <div className="cell-date">{res.check_out}</div>
                   <div className="cell-amt">₱{parseFloat(res.total_amount || 0).toLocaleString()}</div>
-                  <div>
-                    <span className="pill" style={{ background: s.bg, color: s.color }}>
-                      {(res.status || "").replace("_", " ")}
-                    </span>
-                  </div>
+                  <div><span className="pill" style={{ background: s.bg, color: s.color }}>{(res.status||"").replace("_"," ")}</span></div>
                 </div>
               );
             })
