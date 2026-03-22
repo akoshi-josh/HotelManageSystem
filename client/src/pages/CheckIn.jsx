@@ -7,6 +7,27 @@ import {
 import supabase from "../supabaseClient";
 import { logActivity } from "../logger";
 
+/* ─── shared inline styles ─── */
+const inputStyle = {
+  width: "100%", padding: "10px 14px", border: "2px solid #e8e8e8",
+  borderRadius: "8px", fontSize: "0.9rem", outline: "none",
+  fontFamily: "Arial,sans-serif", boxSizing: "border-box",
+  background: "white", transition: "border 0.2s",
+};
+const labelStyle = {
+  display: "block", fontSize: "0.8rem", fontWeight: "700",
+  color: "#555", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.4px",
+};
+const sectionTitle = (color = "#07713c") => ({
+  fontSize: "0.78rem", fontWeight: "700", color,
+  textTransform: "uppercase", letterSpacing: "0.8px",
+  marginBottom: "12px", display: "flex", alignItems: "center", gap: "5px",
+});
+const card = {
+  background: "white", borderRadius: "12px", padding: "16px 20px",
+  marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+};
+
 const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 .page { padding: 24px 28px 48px; font-family: Arial,sans-serif; background: #f4f6f0; min-height: 100%; }
@@ -20,17 +41,14 @@ const CSS = `
 .sc-val { font-size:1.9rem; font-weight:700; color:#1a1a1a; }
 .fbar { background:#fff; border-radius:14px; padding:13px 20px; margin-bottom:20px; border:1px solid #e4ebe4; }
 .finput { width:100%; padding:10px 14px; border:1.5px solid #ccdacc; border-radius:10px; font-size:.9rem; font-family:Arial,sans-serif; color:#333; outline:none; }
-.finput:focus { border-color:#07713c; box-shadow:0 0 0 3px rgba(7,113,60,.1); }
+.finput:focus { border-color:#07713c; }
 .finput::placeholder { color:#a8b8a8; font-style:italic; }
 .sec-hdr { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
 .sec-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
 .sec-title { font-size:.92rem; font-weight:700; color:#333; margin:0; }
-
-/* ── VERTICAL CARD ── */
-.ci-card { background:#fff; border-radius:14px; border:1px solid #e4ebe4; overflow:hidden; box-shadow:0 2px 10px rgba(0,0,0,.06); display:flex; margin-bottom:10px; transition:box-shadow .2s; }
-.ci-card:hover { box-shadow:0 4px 18px rgba(0,0,0,.10); }
+.ci-card { background:#fff; border-radius:14px; border:1px solid #e4ebe4; overflow:hidden; box-shadow:0 2px 10px rgba(0,0,0,.06); display:flex; margin-bottom:10px; }
 .ci-left { background:linear-gradient(180deg,#07713c,#0a9150); padding:16px 14px; display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:88px; flex-shrink:0; }
-.ci-left.overdue { background:linear-gradient(180deg,#e65100,#ff9800); }
+.ci-left.overdue  { background:linear-gradient(180deg,#e65100,#ff9800); }
 .ci-left.upcoming { background:linear-gradient(180deg,#1565c0,#1976d2); }
 .ci-room { font-size:1.6rem; font-weight:700; color:#fff; line-height:1; }
 .ci-room-lbl { font-size:.58rem; color:rgba(255,255,255,.65); text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
@@ -43,67 +61,39 @@ const CSS = `
 .ci-info-val { font-size:.84rem; font-weight:600; color:#222; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ci-bottom { display:flex; justify-content:flex-end; align-items:center; }
 .status-tag { padding:3px 10px; border-radius:20px; font-size:.72rem; font-weight:700; margin-right:auto; }
-
 .empty { background:#fff; border-radius:14px; padding:60px; text-align:center; border:1px solid #e4ebe4; }
-.mo { position:fixed; inset:0; z-index:999; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.52); backdrop-filter:blur(2px); }
+.btn-ci { display:inline-flex; align-items:center; gap:5px; padding:8px 18px; background:#07713c; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:.82rem; font-weight:700; font-family:Arial,sans-serif; }
+.btn-walkin { padding:10px 20px; background:#1565c0; color:#fff; border:none; border-radius:9px; cursor:pointer; font-size:.86rem; font-weight:700; font-family:Arial,sans-serif; display:inline-flex; align-items:center; gap:6px; }
 .mo-wi { position:fixed; inset:0; z-index:999; display:flex; align-items:flex-start; justify-content:center; background:rgba(0,0,0,.52); backdrop-filter:blur(2px); padding:20px; overflow-y:auto; }
-.mb { background:#f4f6f0; border-radius:20px; width:100%; max-width:480px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.22); }
 .mb-wi { background:#f4f6f0; border-radius:20px; width:100%; max-width:560px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.22); margin:auto; }
-.mh { padding:20px 24px; flex-shrink:0; display:flex; justify-content:space-between; align-items:center; border-radius:20px 20px 0 0; }
-.mh-green { background:linear-gradient(135deg,#07713c,#0a9150); }
-.mh-blue  { background:linear-gradient(135deg,#1565c0,#1976d2); }
+.mh-blue { background:linear-gradient(135deg,#1565c0,#1976d2); padding:20px 24px; border-radius:20px 20px 0 0; display:flex; justify-content:space-between; align-items:center; }
 .mh-title { color:#fff; font-size:1rem; font-weight:700; margin:0; }
 .mh-sub   { color:rgba(255,255,255,.68); font-size:.8rem; margin:3px 0 0; }
 .mx { background:rgba(255,255,255,.15); border:none; width:32px; height:32px; border-radius:50%; cursor:pointer; color:#fff; font-size:1.2rem; display:flex; align-items:center; justify-content:center; }
-.mx:hover { background:rgba(255,255,255,.28); }
 .mbody { padding:18px 22px; overflow-y:auto; }
-.mfoot { padding:13px 22px; border-top:1px solid #e4ebe4; display:flex; gap:10px; flex-shrink:0; }
 .msec { background:#fff; border-radius:12px; padding:14px 16px; margin-bottom:12px; border:1px solid #e4ebe4; }
-.msec-title { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
-.msec-title-green { color:#07713c; }
-.msec-title-blue  { color:#1565c0; }
-.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-.info-cell { background:#f4f6f0; border-radius:8px; padding:9px 12px; }
-.info-lbl  { font-size:.65rem; color:#8a9a8a; font-weight:700; text-transform:uppercase; margin-bottom:2px; }
-.info-val  { font-size:.88rem; font-weight:600; color:#222; }
+.msec-title-blue { font-size:.68rem; font-weight:700; color:#1565c0; text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
 .flabel { display:block; font-size:.76rem; font-weight:700; color:#3a6a3a; margin-bottom:4px; text-transform:uppercase; letter-spacing:.4px; }
-.fi { width:100%; padding:10px 14px; border:1.5px solid #ccdacc; border-radius:10px; font-size:.9rem; font-family:Arial,sans-serif; outline:none; background:#fff; color:#333; box-sizing:border-box; transition:border-color .2s; }
-.fi:focus { border-color:#07713c; box-shadow:0 0 0 3px rgba(7,113,60,.1); }
-.fi::placeholder { color:#a8b8a8; font-style:italic; }
-.pay-opt { flex:1; padding:11px; border:1.5px solid #ccdacc; border-radius:10px; cursor:pointer; transition:all .15s; }
-.pay-opt.active-green { border-color:#07713c; background:#ecfdf5; }
-.pay-opt.active-blue  { border-color:#1565c0; background:#e3f2fd; }
+.fi { width:100%; padding:10px 14px; border:1.5px solid #ccdacc; border-radius:10px; font-size:.9rem; font-family:Arial,sans-serif; outline:none; background:#fff; color:#333; box-sizing:border-box; }
+.pay-opt { flex:1; padding:11px; border:1.5px solid #ccdacc; border-radius:10px; cursor:pointer; }
+.pay-opt.active-blue { border-color:#1565c0; background:#e3f2fd; }
 .pay-opt-title { font-weight:700; font-size:.84rem; color:#333; }
 .pay-opt-sub   { font-size:.73rem; color:#aaa; margin-top:2px; }
-.pm-btn { flex:1; padding:8px; border:1.5px solid #ccdacc; border-radius:8px; background:#fff; cursor:pointer; font-size:.74rem; font-weight:700; color:#888; font-family:Arial,sans-serif; transition:all .15s; }
-.pm-btn.active { border-color:#07713c; background:#ecfdf5; color:#07713c; }
 .total-bar-blue { background:#1565c0; border-radius:10px; padding:11px 16px; display:flex; justify-content:space-between; align-items:center; margin-top:10px; }
-.warn-box { background:#fffde7; border:1px solid #fff176; border-radius:8px; padding:10px 14px; font-size:.82rem; color:#f59e0b; font-weight:600; }
-.charge-row { display:flex; justify-content:space-between; align-items:center; padding:7px 11px; background:#f0f7ff; border:1px solid #bbdefb; border-radius:7px; margin-bottom:5px; }
-.charge-name { font-size:.82rem; color:#333; }
-.charge-amt  { font-weight:700; color:#1565c0; font-size:.82rem; }
-.charge-del  { background:none; border:none; cursor:pointer; color:#e53935; padding:2px 4px; border-radius:4px; display:flex; align-items:center; }
-.charge-del:hover { background:#fce4ec; }
 .add-row { display:flex; gap:7px; align-items:center; }
 .add-fi-blue { flex:1; padding:9px 12px; border:1.5px dashed #90caf9; border-radius:8px; font-size:.84rem; outline:none; font-family:Arial,sans-serif; color:#333; }
-.add-fi-blue:focus { border-color:#1565c0; }
 .add-fi-blue::placeholder { color:#a8b8a8; font-style:italic; }
 .add-btn-blue { padding:9px 16px; background:#1565c0; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:700; font-size:.82rem; font-family:Arial,sans-serif; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; }
 .add-btn-blue:disabled { background:#aaa; cursor:not-allowed; }
-.alert-ok  { padding:9px 14px; border-radius:8px; background:#e8f5e9; border-left:3px solid #4cae4c; color:#1b5e20; font-size:.83rem; margin-bottom:12px; }
+.charge-row { display:flex; justify-content:space-between; align-items:center; padding:7px 11px; background:#f0f7ff; border:1px solid #bbdefb; border-radius:7px; margin-bottom:5px; }
+.charge-del { background:none; border:none; cursor:pointer; color:#e53935; padding:2px 4px; border-radius:4px; display:flex; align-items:center; }
 .alert-err { padding:9px 14px; border-radius:8px; background:#fdecea; border-left:3px solid #e53935; color:#b71c1c; font-size:.83rem; margin-bottom:12px; }
-.btn-cancel  { flex:1; padding:11px; background:#fff; border:1.5px solid #ccdacc; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:600; color:#4a6a4a; font-family:Arial,sans-serif; }
-.btn-confirm-green { flex:2; padding:11px; background:#07713c; border:none; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:700; color:#fff; font-family:Arial,sans-serif; display:flex; align-items:center; justify-content:center; gap:6px; }
-.btn-confirm-blue  { flex:2; padding:11px; background:#1565c0; border:none; border-radius:10px; cursor:pointer; font-size:.88rem; font-weight:700; color:#fff; font-family:Arial,sans-serif; display:flex; align-items:center; justify-content:center; gap:6px; }
-.btn-confirm-green:disabled, .btn-confirm-blue:disabled { background:#aaa; cursor:not-allowed; }
-.btn-ci { display:inline-flex; align-items:center; gap:5px; padding:8px 18px; background:#07713c; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:.82rem; font-weight:700; font-family:Arial,sans-serif; }
-.btn-ci:hover { background:#05592f; }
-.btn-walkin { padding:10px 20px; background:#1565c0; color:#fff; border:none; border-radius:9px; cursor:pointer; font-size:.86rem; font-weight:700; font-family:Arial,sans-serif; display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 12px rgba(21,101,192,.28); }
-.btn-walkin:hover { background:#0d47a1; }
+.pm-btn { flex:1; padding:8px 4px; border:2px solid #e8e8e8; border-radius:8px; background:white; cursor:pointer; font-size:.75rem; font-weight:700; color:#888; font-family:Arial,sans-serif; }
+.pm-btn.act { border-color:#07713c; background:#ecfdf5; color:#07713c; }
 `;
 
 function AddChargeBlue({ onAdd }) {
-  const [name, setName]     = React.useState("");
+  const [name, setName] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const handle = () => {
     if (!name.trim() || !amount) return;
@@ -120,30 +110,41 @@ function AddChargeBlue({ onAdd }) {
 }
 
 export default function CheckIn() {
-  const [reservations, setReservations] = useState([]);
-  const [rooms,        setRooms]        = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [search,       setSearch]       = useState("");
-  const [showModal,    setShowModal]    = useState(false);
-  const [showWalkIn,   setShowWalkIn]   = useState(false);
-  const [selected,     setSelected]     = useState(null);
-  const [processing,   setProcessing]   = useState(false);
-  const [paymentMethod,setPaymentMethod]= useState("cash");
-  const [amountPaid,   setAmountPaid]   = useState("");
-  const [successMsg,   setSuccessMsg]   = useState("");
-  const [payLater,     setPayLater]     = useState(false);
-  const [walkInPayLater,setWalkInPayLater] = useState(false);
-  const [walkIn, setWalkIn] = useState({ guest_name: "", guest_email: "", guest_phone: "", room_id: "", check_in: new Date().toISOString().split("T")[0], check_out: "", notes: "", additional_charges: [] });
+  const [reservations,   setReservations]   = useState([]);
+  const [rooms,          setRooms]          = useState([]);
+  const [loading,        setLoading]        = useState(true);
+  const [search,         setSearch]         = useState("");
+
+  /* regular check-in modal */
+  const [showModal,      setShowModal]      = useState(false);
+  const [selected,       setSelected]       = useState(null);
+  const [processing,     setProcessing]     = useState(false);
+  const [payLater,       setPayLater]       = useState(false);
+  const [paymentMethod,  setPaymentMethod]  = useState("cash");
+  const [fullyPaid,      setFullyPaid]      = useState(false);
+  const [amountReceived, setAmountReceived] = useState("");
+  // ── NEW: track if amount field was touched (for validation styling) ──
+  const [amountTouched,  setAmountTouched]  = useState(false);
+
+  /* walk-in modal */
+  const [showWalkIn,     setShowWalkIn]     = useState(false);
+  const [walkInPayLater, setWalkInPayLater] = useState(false);
+  const [walkIn, setWalkIn] = useState({
+    guest_name: "", guest_email: "", guest_phone: "",
+    room_id: "", check_in: new Date().toISOString().split("T")[0],
+    check_out: "", notes: "", additional_charges: [],
+  });
   const [walkInError,  setWalkInError]  = useState("");
   const [savingWalkIn, setSavingWalkIn] = useState(false);
 
   const today = new Date().toISOString().split("T")[0];
-  useEffect(() => { fetchData(); }, []);
+
+  useEffect(() => { fetchData(); }, []); // eslint-disable-line
 
   const fetchData = async () => {
     setLoading(true);
     const [{ data: resData }, { data: roomData }] = await Promise.all([
-      supabase.from("reservations").select("*").in("status", ["confirmed","pending"]).order("check_in"),
+      supabase.from("reservations").select("*").in("status", ["confirmed", "pending"]).order("check_in"),
       supabase.from("rooms").select("*").order("room_number"),
     ]);
     setReservations(resData || []);
@@ -153,102 +154,138 @@ export default function CheckIn() {
 
   const availableRooms = rooms.filter(r => r.status === "available");
 
+  /* ── open regular check-in modal ── */
   const openCheckIn = (res) => {
     setSelected(res);
-    setAmountPaid(res.total_amount?.toString() || "");
-    setPaymentMethod("cash"); setPayLater(false); setSuccessMsg("");
+    setPayLater(false);
+    setPaymentMethod("cash");
+    setFullyPaid(false);
+    setAmountReceived("");
+    setAmountTouched(false); // reset touched state
     setShowModal(true);
   };
 
+  /* ── derived payment values ── */
+  const totalBill   = parseFloat(selected?.total_amount || 0);
+  const amtReceived = parseFloat(amountReceived || 0);
+  const change      = fullyPaid ? 0 : Math.max(0, amtReceived - totalBill);
+  const balance     = fullyPaid ? 0 : Math.max(0, totalBill - amtReceived);
+
+  // ── Amount field is invalid if Pay Now, not fully paid, and empty/zero ──
+  const amountInvalid = !payLater && !fullyPaid && amountTouched && (!amountReceived || amtReceived <= 0);
+
+  /* ── confirm check-in ── */
   const handleCheckIn = async () => {
-    if (!payLater && !amountPaid) return;
+    // Validate amount before proceeding
+    if (!payLater && !fullyPaid && (!amountReceived || amtReceived <= 0)) {
+      setAmountTouched(true);
+      return;
+    }
     setProcessing(true);
     const checkedId = selected.id;
+    const paidAmt   = payLater ? 0 : fullyPaid ? totalBill : amtReceived;
+    const isPartial = !payLater && !fullyPaid && paidAmt < totalBill && paidAmt > 0;
+
     await supabase.from("reservations").update({
-      status: "checked_in",
+      status:         "checked_in",
       payment_method: payLater ? "pay_at_checkout" : paymentMethod,
-      amount_paid: payLater ? 0 : parseFloat(amountPaid),
-      pay_later: payLater,
+      amount_paid:    paidAmt,
+      pay_later:      payLater || isPartial,
     }).eq("id", checkedId);
+
     await supabase.from("rooms").update({ status: "occupied" }).eq("id", selected.room_id);
-    await logActivity({ action: `Checked in guest: ${selected.guest_name}`, category: "check_in", details: `Room ${selected.room_number} | ${selected.check_in} → ${selected.check_out} | ${payLater ? "Pay at checkout" : `Paid ₱${amountPaid}`}`, entity_type: "reservation", entity_id: checkedId });
-    // Remove from list immediately
+
+    logActivity({
+      action:      `Checked in guest: ${selected.guest_name}`,
+      category:    "check_in",
+      details:     `Room ${selected.room_number} | ${payLater ? "Pay at checkout" : `Paid ₱${paidAmt.toLocaleString()}`}`,
+      entity_type: "reservation",
+      entity_id:   checkedId,
+    });
+
     setReservations(prev => prev.filter(r => r.id !== checkedId));
     setProcessing(false);
     setShowModal(false);
     setSelected(null);
-    // Refresh in background
+    setAmountTouched(false);
     setTimeout(() => fetchData(), 500);
   };
 
+  /* ── walk-in ── */
   const calcWalkInTotal = () => {
     const room = rooms.find(r => r.id === walkIn.room_id);
     if (!room || !walkIn.check_in) return 0;
-    if (!walkIn.check_out) return parseFloat(room.price); // show per-night rate for open stays
+    if (!walkIn.check_out) return parseFloat(room.price);
     return Math.max(0, (new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000) * parseFloat(room.price);
   };
 
   const handleWalkIn = async () => {
     setWalkInError("");
-    if (!walkIn.guest_name || !walkIn.room_id || !walkIn.check_in) { setWalkInError("Please fill in guest name, room, and check-in date."); return; }
-    if (walkIn.check_out && new Date(walkIn.check_out) <= new Date(walkIn.check_in)) { setWalkInError("Check-out must be after check-in."); return; }
+    if (!walkIn.guest_name || !walkIn.room_id || !walkIn.check_in) {
+      setWalkInError("Please fill in guest name, room, and check-in date."); return;
+    }
+    if (walkIn.check_out && new Date(walkIn.check_out) <= new Date(walkIn.check_in)) {
+      setWalkInError("Check-out must be after check-in."); return;
+    }
     setSavingWalkIn(true);
-    const room = rooms.find(r => r.id === walkIn.room_id);
+    const room   = rooms.find(r => r.id === walkIn.room_id);
     const nights = walkIn.check_out
       ? Math.max(0, (new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000)
-      : 1; // default 1 night for open-ended stays
-    const total = nights * parseFloat(room?.price || 0);
+      : 1;
+    const total  = nights * parseFloat(room?.price || 0);
+
     const { error } = await supabase.from("reservations").insert({
-      guest_name: walkIn.guest_name, guest_email: walkIn.guest_email, guest_phone: walkIn.guest_phone,
-      room_id: walkIn.room_id, room_number: room?.room_number, check_in: walkIn.check_in,
+      guest_name:  walkIn.guest_name, guest_email: walkIn.guest_email,
+      guest_phone: walkIn.guest_phone, room_id: walkIn.room_id,
+      room_number: room?.room_number,  check_in:   walkIn.check_in,
       ...(walkIn.check_out ? { check_out: walkIn.check_out } : {}),
       status: "checked_in", total_amount: total, notes: walkIn.notes,
-      amount_paid: walkInPayLater ? 0 : total, pay_later: walkInPayLater,
+      amount_paid:    walkInPayLater ? 0 : (parseFloat(walkIn.amount_received || 0) > 0 ? Math.min(parseFloat(walkIn.amount_received), total) : total),
+      pay_later:      walkInPayLater || (!walkInPayLater && parseFloat(walkIn.amount_received || 0) > 0 && parseFloat(walkIn.amount_received) < total),
       payment_method: walkInPayLater ? "pay_at_checkout" : "cash",
       additional_charges: JSON.stringify(walkIn.additional_charges || []),
     });
+
     if (error) { setWalkInError(error.message); setSavingWalkIn(false); return; }
+
     await supabase.from("rooms").update({ status: "occupied" }).eq("id", walkIn.room_id);
-    await logActivity({ action: `Walk-in check-in: ${walkIn.guest_name}`, category: "check_in", details: `Room ${room?.room_number} | ${walkIn.check_in} → ${walkIn.check_out} | Total ₱${total.toLocaleString()}`, entity_type: "reservation" });
-    setSavingWalkIn(false); setShowWalkIn(false);
+    logActivity({
+      action: `Walk-in check-in: ${walkIn.guest_name}`, category: "check_in",
+      details: `Room ${room?.room_number} | Total ₱${total.toLocaleString()}`,
+      entity_type: "reservation",
+    });
+
+    setSavingWalkIn(false);
+    setShowWalkIn(false);
     setWalkIn({ guest_name: "", guest_email: "", guest_phone: "", room_id: "", check_in: today, check_out: "", notes: "", additional_charges: [] });
     fetchData();
   };
 
-  const filtered = reservations.filter(r =>
+  const filtered    = reservations.filter(r =>
     r.guest_name.toLowerCase().includes(search.toLowerCase()) ||
     (r.room_number || "").includes(search) ||
     (r.guest_phone || "").includes(search)
   );
-
   const todayArr    = filtered.filter(r => r.check_in === today);
   const overdueArr  = filtered.filter(r => r.check_in < today);
   const upcomingArr = filtered.filter(r => r.check_in > today);
-  const nights      = selected ? Math.max(0, (new Date(selected.check_out) - new Date(selected.check_in)) / 86400000) : 0;
 
-  /* ── VERTICAL CARD ── */
   const GuestCard = ({ res }) => {
-    const isOverdue  = res.check_in < today;
-    const isToday    = res.check_in === today;
-    const leftClass  = isOverdue ? "ci-left overdue" : isToday ? "ci-left" : "ci-left upcoming";
-    const tagBg      = isOverdue ? "#fff3e0" : isToday ? "#ecfdf5" : "#e3f2fd";
-    const tagColor   = isOverdue ? "#e65100" : isToday ? "#07713c" : "#1565c0";
-    const tagLabel   = isOverdue ? "Overdue" : isToday ? "Today" : "Upcoming";
-    const resNights  = Math.max(0, (new Date(res.check_out) - new Date(res.check_in)) / 86400000);
+    const isOverdue = res.check_in < today;
+    const isToday   = res.check_in === today;
+    const resNights = Math.max(0, (new Date(res.check_out) - new Date(res.check_in)) / 86400000);
     return (
       <div className="ci-card">
-        <div className={leftClass}>
+        <div className={`ci-left${isOverdue ? " overdue" : isToday ? "" : " upcoming"}`}>
           <div className="ci-room-lbl">Room</div>
           <div className="ci-room">{res.room_number || "—"}</div>
-          <div className="ci-type-badge">
-            <div className="ci-type-val">{resNights}n</div>
-          </div>
+          <div className="ci-type-badge"><div className="ci-type-val">{resNights}n</div></div>
         </div>
         <div className="ci-body">
           <div className="ci-info-grid">
             <div className="ci-info" style={{ gridColumn: "span 2" }}>
               <div className="ci-info-lbl"><RiUserLine size={10} />Guest</div>
-              <div className="ci-info-val" style={{ fontSize: ".9rem", fontWeight: "700" }}>{res.guest_name}</div>
+              <div className="ci-info-val" style={{ fontWeight: "700" }}>{res.guest_name}</div>
             </div>
             <div className="ci-info">
               <div className="ci-info-lbl"><RiCalendarLine size={10} />Check-In</div>
@@ -256,7 +293,7 @@ export default function CheckIn() {
             </div>
             <div className="ci-info">
               <div className="ci-info-lbl"><RiCalendarLine size={10} />Check-Out</div>
-              <div className="ci-info-val">{res.check_out}</div>
+              <div className="ci-info-val">{res.check_out || "Open"}</div>
             </div>
             <div className="ci-info">
               <div className="ci-info-lbl"><RiMoneyDollarCircleLine size={10} />Total</div>
@@ -270,7 +307,10 @@ export default function CheckIn() {
             )}
           </div>
           <div className="ci-bottom">
-            <span className="status-tag" style={{ background: tagBg, color: tagColor }}>{tagLabel}</span>
+            <span className="status-tag" style={{
+              background: isOverdue ? "#fff3e0" : isToday ? "#ecfdf5" : "#e3f2fd",
+              color: isOverdue ? "#e65100" : isToday ? "#07713c" : "#1565c0",
+            }}>{isOverdue ? "Overdue" : isToday ? "Today" : "Upcoming"}</span>
             <button className="btn-ci" onClick={() => openCheckIn(res)}>
               <RiLoginBoxLine size={14} />Check In
             </button>
@@ -290,10 +330,15 @@ export default function CheckIn() {
     </div>
   );
 
+  // ── Confirm button disabled if Pay Now and no valid amount (and not fully paid) ──
+  const confirmDisabled = processing || (!payLater && !fullyPaid && (!amountReceived || amtReceived <= 0));
+
   return (
     <>
       <style>{CSS}</style>
       <div className="page">
+
+        {/* ── Page header ── */}
         <div className="page-hdr">
           <div>
             <h2 className="page-title">Check-In</h2>
@@ -304,12 +349,13 @@ export default function CheckIn() {
           </button>
         </div>
 
+        {/* ── Stat cards ── */}
         <div className="sc-4">
           {[
-            { label: "Today's Arrivals", val: reservations.filter(r => r.check_in === today).length, Icon: RiCalendarLine,       bg: "#e8f5e9", c: "#07713c" },
-            { label: "Overdue",          val: reservations.filter(r => r.check_in < today).length,   Icon: RiTimeLine,           bg: "#fff3e0", c: "#e65100" },
-            { label: "Upcoming",         val: reservations.filter(r => r.check_in > today).length,   Icon: RiCalendarLine,       bg: "#e3f2fd", c: "#1565c0" },
-            { label: "Available Rooms",  val: availableRooms.length,                                  Icon: RiHotelBedLine,       bg: "#f3e5f5", c: "#6a1b9a" },
+            { label: "Today's Arrivals", val: reservations.filter(r => r.check_in === today).length, Icon: RiCalendarLine, bg: "#e8f5e9", c: "#07713c" },
+            { label: "Overdue",          val: reservations.filter(r => r.check_in < today).length,   Icon: RiTimeLine,    bg: "#fff3e0", c: "#e65100" },
+            { label: "Upcoming",         val: reservations.filter(r => r.check_in > today).length,   Icon: RiCalendarLine,bg: "#e3f2fd", c: "#1565c0" },
+            { label: "Available Rooms",  val: availableRooms.length,                                  Icon: RiHotelBedLine,bg: "#f3e5f5", c: "#6a1b9a" },
           ].map(({ label, val, Icon, bg, c }) => (
             <div key={label} className="sc" style={{ background: bg }}>
               <div className="sc-row"><Icon size={18} color={c} /><span className="sc-lbl" style={{ color: c }}>{label}</span></div>
@@ -318,16 +364,18 @@ export default function CheckIn() {
           ))}
         </div>
 
+        {/* ── Search ── */}
         <div className="fbar">
           <input className="finput" placeholder="Search guest name, room, phone..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
 
+        {/* ── Guest list ── */}
         {loading ? (
           <div className="empty">Loading...</div>
         ) : filtered.length === 0 ? (
           <div className="empty">
             <RiCheckboxCircleLine size={48} color="#07713c" style={{ marginBottom: "12px" }} />
-            <div style={{ fontWeight: "700", color: "#333", fontSize: "1rem" }}>No pending check-ins!</div>
+            <div style={{ fontWeight: "700", color: "#333" }}>No pending check-ins!</div>
             <div style={{ color: "#aaa", marginTop: "6px", fontSize: ".85rem" }}>All reservations have been processed.</div>
           </div>
         ) : (
@@ -338,73 +386,200 @@ export default function CheckIn() {
           </>
         )}
 
-        {/* Check-In Modal */}
+        {/* ════════════════════════════════════════
+            CHECK-IN MODAL
+            ════════════════════════════════════════ */}
         {showModal && selected && (
-          <div className="mo">
-            <div className="mb">
-              <div className="mh mh-green">
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px", overflowY: "auto" }}>
+            <div style={{ background: "#f8f9fa", borderRadius: "20px", width: "520px", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", fontFamily: "Arial,sans-serif" }}>
+
+              {/* Header */}
+              <div style={{ background: "linear-gradient(135deg,#07713c,#0a9150)", borderRadius: "20px 20px 0 0", padding: "24px 30px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <p className="mh-title">Process Check-In</p>
-                  <p className="mh-sub">Confirm guest arrival and collect payment</p>
+                  <h3 style={{ margin: 0, color: "white", fontSize: "1.2rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <RiLoginBoxLine size={20} /> Process Check-In
+                  </h3>
+                  <p style={{ margin: "4px 0 0", color: "rgba(255,255,255,0.7)", fontSize: "0.82rem" }}>Confirm guest arrival and collect payment</p>
                 </div>
-                <button className="mx" onClick={() => setShowModal(false)}>×</button>
+                <button onClick={() => setShowModal(false)} style={{ background: "rgba(255,255,255,0.15)", border: "none", width: "34px", height: "34px", borderRadius: "50%", cursor: "pointer", color: "white", fontSize: "1.1rem" }}>×</button>
               </div>
-              <div className="mbody">
-                {successMsg && <div className="alert-ok">✓ {successMsg}</div>}
-                <div className="msec">
-                  <div className="msec-title msec-title-green"><RiUserLine size={13} />Guest Summary</div>
-                  <div className="info-grid">
-                    {[["Guest", selected.guest_name], ["Room", `Room ${selected.room_number}`], ["Check-In", selected.check_in], ["Check-Out", selected.check_out], ["Duration", `${nights} night${nights!==1?"s":""}`], ["Total", `₱${parseFloat(selected.total_amount||0).toLocaleString()}`]].map(([k,v]) => (
-                      <div key={k} className="info-cell"><div className="info-lbl">{k}</div><div className="info-val">{v}</div></div>
-                    ))}
-                  </div>
-                </div>
-                <div className="msec">
-                  <div className="msec-title msec-title-green"><RiMoneyDollarCircleLine size={13} />Payment Option</div>
-                  <div style={{ display: "flex", gap: "10px", marginBottom: "12px" }}>
-                    {[{val: false, label: "Pay Now", sub: "Collect on check-in"}, {val: true, label: "Pay at Check-Out", sub: "Guest pays when leaving"}].map(opt => (
-                      <div key={String(opt.val)} className={`pay-opt${payLater===opt.val?" active-green":""}`} onClick={() => setPayLater(opt.val)}>
-                        <div className="pay-opt-title">{opt.label}</div>
-                        <div className="pay-opt-sub">{opt.sub}</div>
+
+              <div style={{ padding: "24px 30px" }}>
+
+                {/* Reservation Summary */}
+                <div style={card}>
+                  <div style={sectionTitle("#07713c")}><RiUserLine size={13} /> Reservation Summary</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                    {[
+                      ["Guest",     selected.guest_name],
+                      ["Room",      `Room ${selected.room_number}`],
+                      ["Check-In",  selected.check_in],
+                      ["Check-Out", selected.check_out || "Open Stay"],
+                      ["Duration",  selected.check_out ? `${Math.max(0, (new Date(selected.check_out) - new Date(selected.check_in)) / 86400000)} nights` : "Open-ended"],
+                      ["Room Rate", `₱${parseFloat(selected.total_amount || 0).toLocaleString()}`],
+                    ].map(([k, v]) => (
+                      <div key={k} style={{ background: "#f8f9fa", borderRadius: "8px", padding: "10px 12px" }}>
+                        <div style={{ color: "#aaa", fontSize: "0.75rem", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
+                        <div style={{ fontWeight: "600", color: "#222", marginTop: "2px", fontSize: "0.88rem" }}>{v}</div>
                       </div>
                     ))}
                   </div>
-                  {!payLater && (
-                    <>
-                      <div style={{ marginBottom: "10px" }}>
-                        <label className="flabel">Payment Method</label>
-                        <div style={{ display: "flex", gap: "7px" }}>
-                          {["cash","card","gcash","bank_transfer"].map(m => (
-                            <button key={m} className={`pm-btn${paymentMethod===m?" active":""}`} onClick={() => setPaymentMethod(m)}>
-                              {m==="cash"?"Cash":m==="card"?"Card":m==="gcash"?"GCash":"Bank"}
-                            </button>
-                          ))}
+                </div>
+
+                {/* Pay Now / Pay at Checkout toggle */}
+                <div style={card}>
+                  <div style={sectionTitle("#07713c")}><RiMoneyDollarCircleLine size={13} /> Payment Option</div>
+                  <div style={{ display: "flex", gap: "10px", marginBottom: "4px" }}>
+                    {[
+                      { val: false, label: "Pay Now",          sub: "Collect full or partial now" },
+                      { val: true,  label: "Pay at Check-Out", sub: "Collect when guest leaves"   },
+                    ].map(opt => (
+                      <div key={String(opt.val)}
+                        onClick={() => { setPayLater(opt.val); setAmountTouched(false); }}
+                        style={{ flex: 1, padding: "11px", border: `1.5px solid ${payLater === opt.val ? "#07713c" : "#ccdacc"}`, borderRadius: "10px", cursor: "pointer", background: payLater === opt.val ? "#ecfdf5" : "#fff" }}>
+                        <div style={{ fontWeight: "700", fontSize: ".84rem", color: "#333" }}>{opt.label}</div>
+                        <div style={{ fontSize: ".73rem", color: "#aaa", marginTop: "2px" }}>{opt.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── PAY NOW section ── */}
+                {!payLater && (
+                  <>
+                    {/* Payment method */}
+                    <div style={card}>
+                      <div style={sectionTitle("#07713c")}><RiMoneyDollarCircleLine size={13} /> Payment Method</div>
+                      <div style={{ display: "flex", gap: "10px" }}>
+                        {["cash", "card", "gcash", "bank_transfer"].map(m => (
+                          <button key={m} onClick={() => setPaymentMethod(m)}
+                            style={{ flex: 1, padding: "8px 4px", border: `2px solid ${paymentMethod === m ? "#07713c" : "#e8e8e8"}`, borderRadius: "8px", background: paymentMethod === m ? "#ecfdf5" : "white", cursor: "pointer", fontSize: "0.75rem", fontWeight: "700", color: paymentMethod === m ? "#07713c" : "#888", fontFamily: "Arial,sans-serif" }}>
+                            {m === "cash" ? "Cash" : m === "card" ? "Card" : m === "gcash" ? "GCash" : "Bank"}<br />
+                            <span style={{ fontSize: "0.65rem", fontWeight: "400", color: "#aaa" }}>
+                              {m === "cash" ? "💵" : m === "card" ? "💳" : m === "gcash" ? "📱" : "🏦"}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Collect Payment */}
+                    <div style={card}>
+                      <div style={sectionTitle("#07713c")}><RiMoneyDollarCircleLine size={13} /> Collect Payment</div>
+
+                      {/* Fully paid toggle */}
+                      <div
+                        onClick={() => { setFullyPaid(f => !f); if (!fullyPaid) setAmountReceived(totalBill.toString()); setAmountTouched(false); }}
+                        style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", borderRadius: "10px", border: `2px solid ${fullyPaid ? "#4caf50" : "#e8e8e8"}`, background: fullyPaid ? "#e8f5e9" : "#f8f9fa", cursor: "pointer", marginBottom: "14px", transition: "all 0.2s" }}>
+                        <div style={{ width: "22px", height: "22px", borderRadius: "50%", border: `2px solid ${fullyPaid ? "#4caf50" : "#ccc"}`, background: fullyPaid ? "#4caf50" : "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          {fullyPaid && <span style={{ color: "white", fontSize: "0.75rem", fontWeight: "700" }}>✓</span>}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: "700", fontSize: "0.9rem", color: fullyPaid ? "#1b5e20" : "#333" }}>Guest has fully paid</div>
+                          <div style={{ fontSize: "0.78rem", color: "#888", marginTop: "1px" }}>Mark as fully settled — no balance at check-out</div>
                         </div>
                       </div>
-                      <div>
-                        <label className="flabel">Amount to Collect (₱)</label>
-                        <input type="number" className="fi" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="Enter amount" />
-                      </div>
-                    </>
-                  )}
-                  {payLater && <div className="warn-box">Payment will be collected at Check-Out.</div>}
+
+                      {/* Amount input when NOT fully paid */}
+                      {!fullyPaid && (
+                        <>
+                          <div style={{ marginBottom: "12px" }}>
+                            {/* ── UPDATED label with required asterisk ── */}
+                            <label style={labelStyle}>
+                              Amount Received (₱) <span style={{ color: "#e53935" }}>*</span>
+                            </label>
+                            <input
+                              type="number"
+                              value={amountReceived}
+                              onChange={e => { setAmountReceived(e.target.value); setAmountTouched(true); }}
+                              // ── UPDATED placeholder: smaller size, regular weight via style ──
+                              placeholder="Enter amount"
+                              style={{
+                                ...inputStyle,
+                                fontSize: "1rem",
+                                fontWeight: "700",
+                                // border highlights red if invalid after touch
+                                border: amountInvalid ? "2px solid #e53935" : "2px solid #e8e8e8",
+                              }}
+                              onFocus={e => { e.target.style.borderColor = amountInvalid ? "#e53935" : "#07713c"; }}
+                              onBlur={e => { setAmountTouched(true); e.target.style.borderColor = amountInvalid ? "#e53935" : "#e8e8e8"; }}
+                            />
+                            {/* ── inline placeholder-style hint text ── */}
+                            {!amountReceived && !amountTouched && (
+                              <div style={{ fontSize: "0.75rem", fontWeight: "400", color: "#aaa", marginTop: "5px" }}>
+                                Enter the amount given by the guest
+                              </div>
+                            )}
+                            {/* ── validation error message ── */}
+                            {amountInvalid && (
+                              <div style={{ fontSize: "0.75rem", color: "#e53935", marginTop: "5px", fontWeight: "500" }}>
+                                Amount received is required to proceed.
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Change to return */}
+                          {change > 0 && (
+                            <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                              <span style={{ color: "#1b5e20", fontWeight: "600", fontSize: "0.9rem" }}>💵 Change to return</span>
+                              <span style={{ color: "#1b5e20", fontWeight: "700", fontSize: "1.2rem" }}>₱{change.toLocaleString()}</span>
+                            </div>
+                          )}
+
+                          {/* Partial — balance at checkout */}
+                          {amtReceived > 0 && balance > 0 && (
+                            <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ color: "#e65100", fontWeight: "700", fontSize: "0.88rem" }}>⚠ Balance due at Check-Out</span>
+                              <span style={{ color: "#e65100", fontWeight: "800", fontSize: "1.1rem" }}>₱{balance.toLocaleString()}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Fully paid confirmation */}
+                      {fullyPaid && (
+                        <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
+                          <span style={{ color: "#1b5e20", fontWeight: "700", fontSize: "0.95rem" }}>✅ Payment fully settled — ₱{totalBill.toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Pay at checkout note */}
+                {payLater && (
+                  <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "10px", padding: "14px 18px", marginBottom: "16px" }}>
+                    <div style={{ fontWeight: "700", fontSize: ".88rem", color: "#f57f17", marginBottom: "3px" }}>Full payment at Check-Out</div>
+                    <div style={{ fontSize: ".8rem", color: "#888" }}>Total of ₱{totalBill.toLocaleString()} will be collected when guest leaves.</div>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <button onClick={() => setShowModal(false)}
+                    style={{ flex: 1, padding: "13px", background: "white", border: "2px solid #e0e0e0", borderRadius: "10px", cursor: "pointer", fontSize: "0.92rem", fontWeight: "600", color: "#666", fontFamily: "Arial,sans-serif" }}>
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCheckIn}
+                    disabled={confirmDisabled}
+                    style={{ flex: 2, padding: "13px", background: confirmDisabled ? "#aaa" : "#07713c", border: "none", borderRadius: "10px", cursor: confirmDisabled ? "not-allowed" : "pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px" }}>
+                    <RiLoginBoxLine size={16} />
+                    {processing ? "Processing..." : "Confirm Check-In"}
+                  </button>
                 </div>
-              </div>
-              <div className="mfoot">
-                <button className="btn-cancel" onClick={() => setShowModal(false)}>Cancel</button>
-                <button className="btn-confirm-green" onClick={handleCheckIn} disabled={processing || (!payLater && !amountPaid)}>
-                  <RiLoginBoxLine size={15} />{processing ? "Processing..." : "Confirm Check-In"}
-                </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Walk-In Modal */}
+        {/* ════════════════════
+            WALK-IN MODAL
+            ════════════════════ */}
         {showWalkIn && (
           <div className="mo-wi" onClick={() => setShowWalkIn(false)}>
             <div className="mb-wi" onClick={e => e.stopPropagation()}>
-              <div className="mh mh-blue">
+              <div className="mh-blue">
                 <div>
                   <p className="mh-title">Walk-In Guest</p>
                   <p className="mh-sub">Guest arrives without prior reservation</p>
@@ -413,28 +588,30 @@ export default function CheckIn() {
               </div>
               <div className="mbody">
                 {walkInError && <div className="alert-err">⚠ {walkInError}</div>}
+
                 <div className="msec">
-                  <div className="msec-title msec-title-blue"><RiUserLine size={13} />Guest Information</div>
+                  <div className="msec-title-blue"><RiUserLine size={13} />Guest Information</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                     <div style={{ gridColumn: "1/-1" }}>
                       <label className="flabel">Full Name <span style={{ color: "#e53935" }}>*</span></label>
-                      <input className="fi" value={walkIn.guest_name} onChange={e => setWalkIn({...walkIn, guest_name: e.target.value})} placeholder="e.g. Juan Dela Cruz" />
+                      <input className="fi" value={walkIn.guest_name} onChange={e => setWalkIn({ ...walkIn, guest_name: e.target.value })} placeholder="e.g. Juan Dela Cruz" />
                     </div>
                     <div>
                       <label className="flabel">Email</label>
-                      <input type="email" className="fi" value={walkIn.guest_email} onChange={e => setWalkIn({...walkIn, guest_email: e.target.value})} placeholder="guest@email.com" />
+                      <input type="email" className="fi" value={walkIn.guest_email} onChange={e => setWalkIn({ ...walkIn, guest_email: e.target.value })} placeholder="guest@email.com" />
                     </div>
                     <div>
                       <label className="flabel">Phone</label>
-                      <input className="fi" value={walkIn.guest_phone} onChange={e => setWalkIn({...walkIn, guest_phone: e.target.value})} placeholder="+63 9XX XXX XXXX" />
+                      <input className="fi" value={walkIn.guest_phone} onChange={e => setWalkIn({ ...walkIn, guest_phone: e.target.value })} placeholder="+63 9XX XXX XXXX" />
                     </div>
                   </div>
                 </div>
+
                 <div className="msec">
-                  <div className="msec-title msec-title-blue"><RiHotelBedLine size={13} />Room & Dates</div>
+                  <div className="msec-title-blue"><RiHotelBedLine size={13} />Room & Dates</div>
                   <div style={{ marginBottom: "10px" }}>
                     <label className="flabel">Select Room <span style={{ color: "#e53935" }}>*</span></label>
-                    <select className="fi" style={{ cursor: "pointer" }} value={walkIn.room_id} onChange={e => setWalkIn({...walkIn, room_id: e.target.value})}>
+                    <select className="fi" style={{ cursor: "pointer" }} value={walkIn.room_id} onChange={e => setWalkIn({ ...walkIn, room_id: e.target.value })}>
                       <option value="">— Choose an available room —</option>
                       {availableRooms.map(r => <option key={r.id} value={r.id}>Room {r.room_number} | {r.type} | Floor {r.floor} | ₱{parseFloat(r.price).toLocaleString()}/night</option>)}
                     </select>
@@ -442,68 +619,111 @@ export default function CheckIn() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                     <div>
                       <label className="flabel">Check-In <span style={{ color: "#e53935" }}>*</span></label>
-                      <input type="date" className="fi" value={walkIn.check_in} onChange={e => setWalkIn({...walkIn, check_in: e.target.value})} />
+                      <input type="date" className="fi" value={walkIn.check_in} onChange={e => setWalkIn({ ...walkIn, check_in: e.target.value })} />
                     </div>
                     <div>
-                      <label className="flabel">Check-Out <span style={{ fontSize: ".7rem", color: "#8a9a8a", fontWeight: "400", textTransform: "none" }}>(optional — leave blank for open stay)</span></label>
-                      <input type="date" className="fi" value={walkIn.check_out} onChange={e => setWalkIn({...walkIn, check_out: e.target.value})} />
+                      <label className="flabel">Check-Out <span style={{ fontSize: ".7rem", color: "#8a9a8a", fontWeight: "400", textTransform: "none" }}>(optional)</span></label>
+                      <input type="date" className="fi" value={walkIn.check_out} onChange={e => setWalkIn({ ...walkIn, check_out: e.target.value })} />
                     </div>
                   </div>
                   {calcWalkInTotal() > 0 && (
-                    <div className="total-bar-blue">
+                    <div className="total-bar-blue" style={{ marginTop: "10px" }}>
                       <span style={{ color: "rgba(255,255,255,.75)", fontSize: ".86rem" }}>
-                        {walkIn.check_out
-                          ? `${Math.round((new Date(walkIn.check_out)-new Date(walkIn.check_in))/86400000)} nights`
-                          : "Open-ended · per night"}
+                        {walkIn.check_out ? `${Math.round((new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000)} nights` : "Open-ended · per night"}
                       </span>
                       <span style={{ color: "#fff", fontWeight: "700" }}>₱{calcWalkInTotal().toLocaleString()}</span>
                     </div>
                   )}
                 </div>
+
                 <div className="msec">
-                  <div className="msec-title msec-title-blue"><RiMoneyDollarCircleLine size={13} />Payment Option</div>
+                  <div className="msec-title-blue"><RiMoneyDollarCircleLine size={13} />Payment Option</div>
                   <div style={{ display: "flex", gap: "10px" }}>
-                    {[{val: false, label: "Pay Now", sub: "Collect on check-in"}, {val: true, label: "Pay at Check-Out", sub: "Guest pays when leaving"}].map(opt => (
-                      <div key={String(opt.val)} className={`pay-opt${walkInPayLater===opt.val?" active-blue":""}`} onClick={() => setWalkInPayLater(opt.val)}>
+                    {[
+                      { val: false, label: "Pay Now",          sub: "Collect on check-in"       },
+                      { val: true,  label: "Pay at Check-Out", sub: "Guest pays when leaving" },
+                    ].map(opt => (
+                      <div key={String(opt.val)} className={`pay-opt${walkInPayLater === opt.val ? " active-blue" : ""}`} onClick={() => setWalkInPayLater(opt.val)}>
                         <div className="pay-opt-title">{opt.label}</div>
                         <div className="pay-opt-sub">{opt.sub}</div>
                       </div>
                     ))}
                   </div>
-                </div>
-                <div className="msec">
-                  <div className="msec-title msec-title-blue">Notes / Special Requests</div>
-                  <textarea className="fi" rows={2} style={{ resize: "vertical" }} value={walkIn.notes} onChange={e => setWalkIn({...walkIn, notes: e.target.value})} placeholder="Any special requests..." />
-                </div>
-                <div className="msec">
-                  <div className="msec-title msec-title-blue"><RiMoneyDollarCircleLine size={13} />Additional Charges</div>
-                  {(walkIn.additional_charges||[]).length > 0 && (
-                    <div style={{ marginBottom: "8px" }}>
-                      {(walkIn.additional_charges||[]).map(c => (
-                        <div key={c.id} className="charge-row">
-                          <span className="charge-name">{c.name}</span>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span className="charge-amt">₱{parseFloat(c.amount).toLocaleString()}</span>
-                            <button className="charge-del" onClick={() => setWalkIn({...walkIn, additional_charges: walkIn.additional_charges.filter(x => x.id !== c.id)})}>
-                              <RiDeleteBinLine size={13} />
-                            </button>
+                  {!walkInPayLater && (
+                    <>
+                      <div style={{ marginTop: "12px", marginBottom: "10px" }}>
+                        <label className="flabel" style={{ display:"block", fontSize:".8rem", fontWeight:"700", color:"#555", marginBottom:"5px", textTransform:"uppercase", letterSpacing:"0.4px" }}>
+                          Amount Received (₱)
+                        </label>
+                        <input
+                          type="number"
+                          className="fi"
+                          style={{ fontSize: "1rem", fontWeight: "700" }}
+                          value={walkIn.amount_received || ""}
+                          onChange={e => setWalkIn({ ...walkIn, amount_received: e.target.value })}
+                          placeholder="Enter amount"
+                          onFocus={e => e.target.style.borderColor = "#1565c0"}
+                          onBlur={e => e.target.style.borderColor = "#ccdacc"}
+                        />
+                        {/* hint text */}
+                        {!walkIn.amount_received && (
+                          <div style={{ fontSize: "0.75rem", fontWeight: "400", color: "#aaa", marginTop: "5px" }}>
+                            Enter the amount given by the guest
                           </div>
+                        )}
+                      </div>
+                      {parseFloat(walkIn.amount_received || 0) > calcWalkInTotal() && calcWalkInTotal() > 0 && (
+                        <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                          <span style={{ color: "#1b5e20", fontWeight: "600", fontSize: "0.9rem" }}>💵 Change to return</span>
+                          <span style={{ color: "#1b5e20", fontWeight: "700", fontSize: "1.2rem" }}>₱{(parseFloat(walkIn.amount_received) - calcWalkInTotal()).toLocaleString()}</span>
                         </div>
-                      ))}
-                    </div>
+                      )}
+                      {parseFloat(walkIn.amount_received || 0) > 0 && parseFloat(walkIn.amount_received || 0) < calcWalkInTotal() && (
+                        <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ color: "#e65100", fontWeight: "700", fontSize: "0.88rem" }}>⚠ Balance due at Check-Out</span>
+                          <span style={{ color: "#e65100", fontWeight: "800", fontSize: "1.1rem" }}>₱{(calcWalkInTotal() - parseFloat(walkIn.amount_received)).toLocaleString()}</span>
+                        </div>
+                      )}
+                    </>
                   )}
-                  <AddChargeBlue onAdd={charge => setWalkIn({...walkIn, additional_charges: [...(walkIn.additional_charges||[]), charge]})} />
+                </div>
+
+                <div className="msec">
+                  <div className="msec-title-blue">Notes / Special Requests</div>
+                  <textarea className="fi" rows={2} style={{ resize: "vertical" }} value={walkIn.notes} onChange={e => setWalkIn({ ...walkIn, notes: e.target.value })} placeholder="Any special requests..." />
+                </div>
+
+                <div className="msec">
+                  <div className="msec-title-blue"><RiMoneyDollarCircleLine size={13} />Additional Charges</div>
+                  {(walkIn.additional_charges || []).map(c => (
+                    <div key={c.id} className="charge-row">
+                      <span style={{ fontSize: ".82rem", color: "#333" }}>{c.name}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontWeight: "700", color: "#1565c0", fontSize: ".82rem" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                        <button className="charge-del" onClick={() => setWalkIn({ ...walkIn, additional_charges: walkIn.additional_charges.filter(x => x.id !== c.id) })}>
+                          <RiDeleteBinLine size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <AddChargeBlue onAdd={charge => setWalkIn({ ...walkIn, additional_charges: [...(walkIn.additional_charges || []), charge] })} />
                 </div>
               </div>
-              <div className="mfoot">
-                <button className="btn-cancel" onClick={() => setShowWalkIn(false)}>Cancel</button>
-                <button className="btn-confirm-blue" onClick={handleWalkIn} disabled={savingWalkIn}>
+
+              <div style={{ padding: "13px 22px", borderTop: "1px solid #e4ebe4", display: "flex", gap: "10px" }}>
+                <button onClick={() => setShowWalkIn(false)}
+                  style={{ flex: 1, padding: "11px", background: "#fff", border: "1.5px solid #ccdacc", borderRadius: "10px", cursor: "pointer", fontSize: ".88rem", fontWeight: "600", color: "#4a6a4a", fontFamily: "Arial,sans-serif" }}>
+                  Cancel
+                </button>
+                <button onClick={handleWalkIn} disabled={savingWalkIn}
+                  style={{ flex: 2, padding: "11px", background: savingWalkIn ? "#aaa" : "#1565c0", border: "none", borderRadius: "10px", cursor: savingWalkIn ? "not-allowed" : "pointer", fontSize: ".88rem", fontWeight: "700", color: "#fff", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
                   <RiWalkLine size={15} />{savingWalkIn ? "Checking In..." : "Check In Now"}
                 </button>
               </div>
             </div>
           </div>
         )}
+
       </div>
     </>
   );

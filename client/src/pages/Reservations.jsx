@@ -77,7 +77,7 @@ export default function Reservations() {
 
   const calcNights = () => {
     if (!form.check_in || !form.check_out) return 0;
-    return Math.max(0, (new Date(form.check_out) - new Date(form.check_in)) / (1000 * 60 * 60 * 24));
+    return Math.max(0, (new Date(form.check_out) - new Date(form.check_in)) / 86400000);
   };
 
   const calcTotal = () => {
@@ -99,7 +99,7 @@ export default function Reservations() {
     setForm({
       guest_name: res.guest_name, guest_email: res.guest_email || "",
       guest_phone: res.guest_phone || "", room_id: res.room_id || "",
-      check_in: res.check_in, check_out: res.check_out,
+      check_in: res.check_in, check_out: res.check_out || "",
       status: res.status, notes: res.notes || "",
       additional_charges: (() => { try { return JSON.parse(res.additional_charges || "[]"); } catch { return []; } })()
     });
@@ -111,15 +111,16 @@ export default function Reservations() {
     if (!form.guest_name)  { setError("Guest name is required."); return; }
     if (!form.room_id)     { setError("Please select a room."); return; }
     if (!form.check_in)    { setError("Check-in date is required."); return; }
-    if (!form.check_out)   { setError("Check-out date is required."); return; }
-    if (new Date(form.check_out) <= new Date(form.check_in)) { setError("Check-out must be after check-in."); return; }
+    // check_out is optional — open stay allowed
+    if (form.check_out && new Date(form.check_out) <= new Date(form.check_in)) { setError("Check-out must be after check-in."); return; }
     setSaving(true);
     const room = rooms.find(r => r.id === form.room_id);
     const payload = {
       guest_name: form.guest_name, guest_email: form.guest_email,
       guest_phone: form.guest_phone, room_id: form.room_id,
       room_number: room?.room_number, check_in: form.check_in,
-      check_out: form.check_out, status: form.status,
+      ...(form.check_out ? { check_out: form.check_out } : {}),
+      status: form.status,
       total_amount: calcTotal(), notes: form.notes,
       additional_charges: JSON.stringify(form.additional_charges || [])
     };
@@ -141,7 +142,36 @@ export default function Reservations() {
       entity_type: "reservation", entity_id: editRes?.id || ""
     });
     setSuccess(editRes ? "Reservation updated!" : "Reservation created!");
-    setSaving(false); fetchAll();
+    setSaving(false);
+
+    // Send confirmation email to guest if email provided and this is a NEW reservation
+    if (!editRes && form.guest_email) {
+      const room = rooms.find(r => r.id === form.room_id);
+      const nights = form.check_out
+        ? Math.max(0, (new Date(form.check_out) - new Date(form.check_in)) / 86400000)
+        : 0;
+      try {
+        await fetch("http://localhost:5000/api/send-reservation-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            guest_name:   form.guest_name,
+            guest_email:  form.guest_email,
+            room_number:  room?.room_number,
+            room_type:    room?.type,
+            check_in:     form.check_in,
+            check_out:    form.check_out || null,
+            nights:       nights,
+            total_amount: calcTotal() || parseFloat(room?.price || 0),
+            notes:        form.notes,
+          }),
+        });
+      } catch (e) {
+        console.warn("Email send failed (non-blocking):", e.message);
+      }
+    }
+
+    fetchAll();
     setTimeout(() => { setShowModal(false); setSuccess(""); }, 1200);
   };
 
@@ -240,7 +270,7 @@ export default function Reservations() {
               <tr><td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "#aaa" }}>No reservations found.</td></tr>
             ) : filtered.map(res => {
               const s = STATUS_CONFIG[res.status] || STATUS_CONFIG.pending;
-              const nights = Math.max(0, (new Date(res.check_out) - new Date(res.check_in)) / (1000 * 60 * 60 * 24));
+              const nights = res.check_out ? Math.max(0, (new Date(res.check_out) - new Date(res.check_in)) / 86400000) : 0;
               return (
                 <tr key={res.id} style={{ borderBottom: "1px solid #f5f5f5" }}
                   onMouseOver={e => e.currentTarget.style.background = "#fafafa"}
@@ -251,8 +281,8 @@ export default function Reservations() {
                   </td>
                   <td style={{ padding: "14px 16px", fontWeight: "700", color: "#1a3c1a" }}>{res.room_number || "—"}</td>
                   <td style={{ padding: "14px 16px", fontSize: "0.88rem", color: "#555" }}>{res.check_in}</td>
-                  <td style={{ padding: "14px 16px", fontSize: "0.88rem", color: "#555" }}>{res.check_out}</td>
-                  <td style={{ padding: "14px 16px", fontSize: "0.88rem", color: "#555" }}>{nights}n</td>
+                  <td style={{ padding: "14px 16px", fontSize: "0.88rem", color: "#555" }}>{res.check_out || <span style={{ color: "#f57f17", fontStyle: "italic" }}>Open</span>}</td>
+                  <td style={{ padding: "14px 16px", fontSize: "0.88rem", color: "#555" }}>{res.check_out ? `${nights}n` : <span style={{ fontSize: "0.75rem", color: "#f57f17", fontWeight: "700", background: "#fff8e1", padding: "2px 7px", borderRadius: "8px", border: "1px solid #ffe082" }}>Open</span>}</td>
                   <td style={{ padding: "14px 16px", fontWeight: "700", color: "#1a3c1a" }}>₱{parseFloat(res.total_amount || 0).toLocaleString()}</td>
                   <td style={{ padding: "14px 16px" }}>
                     <span style={{ padding: "4px 12px", borderRadius: "20px", fontSize: "0.76rem", fontWeight: "700", background: s.bg, color: s.color }}>{s.label}</span>
@@ -331,14 +361,20 @@ export default function Reservations() {
                     <input type="date" value={form.check_in} onChange={e => setForm({ ...form, check_in: e.target.value })} style={inputStyle} onFocus={e => e.target.style.borderColor="#2d6a2d"} onBlur={e => e.target.style.borderColor="#e8e8e8"} />
                   </div>
                   <div>
-                    <label style={labelStyle}>Check-Out Date <span style={{ color: "#e53935" }}>*</span></label>
+                    <label style={labelStyle}>Check-Out Date <span style={{ fontSize: "0.75rem", color: "#888", fontWeight: "400", textTransform: "none" }}>(optional — open stay)</span></label>
                     <input type="date" value={form.check_out} onChange={e => setForm({ ...form, check_out: e.target.value })} style={inputStyle} onFocus={e => e.target.style.borderColor="#2d6a2d"} onBlur={e => e.target.style.borderColor="#e8e8e8"} />
                   </div>
                 </div>
-                {calcNights() > 0 && (
+                {selectedRoom && (
                   <div style={{ marginTop: "14px", background: "#1a3c1a", borderRadius: "10px", padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.88rem" }}>{calcNights()} night{calcNights() !== 1 ? "s" : ""} × ₱{selectedRoom ? parseFloat(selectedRoom.price).toLocaleString() : 0}</div>
-                    <div style={{ color: "white", fontWeight: "700", fontSize: "1.1rem" }}>Total: ₱{calcTotal().toLocaleString()}</div>
+                    {form.check_out ? (
+                      <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.88rem" }}>{calcNights()} night{calcNights() !== 1 ? "s" : ""} × ₱{parseFloat(selectedRoom.price).toLocaleString()}</div>
+                    ) : (
+                      <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.88rem" }}>Open Stay · ₱{parseFloat(selectedRoom.price).toLocaleString()}/night</div>
+                    )}
+                    <div style={{ color: "white", fontWeight: "700", fontSize: "1.1rem" }}>
+                      {form.check_out ? `Total: ₱${calcTotal().toLocaleString()}` : `Per night: ₱${parseFloat(selectedRoom.price).toLocaleString()}`}
+                    </div>
                   </div>
                 )}
               </div>

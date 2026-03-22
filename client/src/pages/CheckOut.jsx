@@ -11,6 +11,75 @@ import { logActivity } from "../logger";
 const inputStyle = { width: "100%", padding: "10px 14px", border: "2px solid #e8e8e8", borderRadius: "8px", fontSize: "0.9rem", outline: "none", fontFamily: "Arial,sans-serif", boxSizing: "border-box", background: "white", transition: "border 0.2s" };
 const labelStyle = { display: "block", fontSize: "0.8rem", fontWeight: "700", color: "#555", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.4px" };
 
+function InspectionWarningModal({ res, onRequestInspection, onProceed, onCancel }) {
+  const status       = res.inspection_status;
+  const isRequested  = status === "requested";
+  const hasDamage    = status === "has_damage";
+  const notRequested = !status;
+
+  const headerBg = hasDamage
+    ? "linear-gradient(135deg,#c62828,#e53935)"
+    : isRequested
+    ? "linear-gradient(135deg,#f57f17,#ffa000)"
+    : "linear-gradient(135deg,#e65100,#ff9800)";
+
+  const title = hasDamage
+    ? "Damage Found — Not Yet Cleared"
+    : isRequested
+    ? "Inspection Still In Progress"
+    : "Room Not Yet Inspected";
+
+  const body = hasDamage
+    ? "Maintenance has reported damage in this room. The inspection is not cleared yet. Proceeding now may result in unresolved damage charges."
+    : isRequested
+    ? "An inspection has been requested but is still in progress. The room has not been cleared yet. Proceeding now may miss damage or missing items."
+    : "This room has not been inspected before check-out. It is recommended to request an inspection first to check for any damage or missing items.";
+
+  const sub = hasDamage
+    ? "Resolve the damage charges before checking out, or proceed at your own risk."
+    : isRequested
+    ? "Wait for maintenance to complete the inspection, or proceed at your own risk."
+    : "You can still proceed, but any damage discovered later cannot be charged to this guest.";
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: "20px" }}>
+      <div style={{ background: "white", borderRadius: "18px", width: "420px", boxShadow: "0 24px 80px rgba(0,0,0,0.3)", fontFamily: "Arial,sans-serif", overflow: "hidden" }}>
+        <div style={{ background: headerBg, padding: "22px 26px", display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <RiAlertLine size={22} color="white" />
+          </div>
+          <div>
+            <div style={{ color: "white", fontWeight: "700", fontSize: "1rem" }}>{title}</div>
+            <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.8rem", marginTop: "2px" }}>
+              Room {res.room_number} · {res.guest_name}
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: "22px 26px" }}>
+          <p style={{ margin: "0 0 6px", fontSize: "0.9rem", color: "#333", lineHeight: 1.6 }}>{body}</p>
+          <p style={{ margin: "0 0 20px", fontSize: "0.83rem", color: "#888" }}>{sub}</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {notRequested && (
+              <button onClick={onRequestInspection}
+                style={{ width: "100%", padding: "12px 16px", background: "#6a1b9a", color: "white", border: "none", borderRadius: "10px", cursor: "pointer", fontSize: "0.88rem", fontWeight: "700", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px" }}>
+                <RiSearchLine size={16} /> Request Inspection First
+              </button>
+            )}
+            <button onClick={onProceed}
+              style={{ width: "100%", padding: "12px 16px", background: "#fff3e0", color: "#e65100", border: "1.5px solid #ffcc80", borderRadius: "10px", cursor: "pointer", fontSize: "0.88rem", fontWeight: "700", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px" }}>
+              <RiLogoutBoxLine size={16} /> Proceed Without Inspection
+            </button>
+            <button onClick={onCancel}
+              style={{ width: "100%", padding: "10px 16px", background: "white", color: "#888", border: "1.5px solid #e0e0e0", borderRadius: "10px", cursor: "pointer", fontSize: "0.85rem", fontWeight: "600", fontFamily: "Arial,sans-serif" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CheckOut({ highlightRoom }) {
   const [reservations,   setReservations]   = useState([]);
   const [loading,        setLoading]        = useState(true);
@@ -24,14 +93,63 @@ export default function CheckOut({ highlightRoom }) {
   const [amountReceived, setAmountReceived] = useState("");
   const [fullyPaid,      setFullyPaid]      = useState(false);
   const [successMsg,     setSuccessMsg]     = useState("");
-  const [requesting,     setRequesting]     = useState(null); // reservation id being requested
-  const [editingCharge,  setEditingCharge]  = useState(null); // { index, value } for editing TBD amounts
+  const [requesting,     setRequesting]     = useState(null);
+  const [editingCharge,  setEditingCharge]  = useState(null);
   const [highlighted,    setHighlighted]    = useState(null);
+  // ── NEW: inspection warning state ──
+  const [showInspectionWarning, setShowInspectionWarning] = useState(false);
+  const [pendingCheckoutRes,    setPendingCheckoutRes]    = useState(null);
 
   const today = new Date().toISOString().split("T")[0];
   useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Highlight a room when navigated from notification
+  /* ── Realtime ── */
+  useEffect(() => {
+    const channel = supabase
+      .channel("checkout-live")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "reservations" },
+        (payload) => {
+          const n = payload.new;
+          const o = payload.old;
+          if (n.inspection_status !== o.inspection_status ||
+              n.inspection_charges !== o.inspection_charges ||
+              n.inspection_notes   !== o.inspection_notes) {
+            setReservations(prev =>
+              prev.map(r => r.id === n.id ? { ...r, ...n } : r)
+            );
+            setSelected(prev =>
+              prev && prev.id === n.id ? { ...prev, ...n } : prev
+            );
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log("CheckOut realtime:", status);
+      });
+    return () => supabase.removeChannel(channel);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("checkout-reservations-live")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "reservations" },
+        (payload) => {
+          const n = payload.new;
+          const o = payload.old;
+          if (n.inspection_status !== o.inspection_status || n.inspection_charges !== o.inspection_charges) {
+            setReservations(prev => prev.map(r => r.id === n.id ? { ...r, ...n } : r));
+            setSelected(prev => prev && prev.id === n.id ? { ...prev, ...n } : prev);
+          }
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (highlightRoom?.room_number) {
       setHighlighted(highlightRoom.room_number);
@@ -54,7 +172,6 @@ export default function CheckOut({ highlightRoom }) {
     await supabase.from("reservations")
       .update({ inspection_charges: JSON.stringify(charges) })
       .eq("id", res.id);
-    // Refresh local state
     setReservations(prev => prev.map(r => r.id === res.id
       ? { ...r, inspection_charges: JSON.stringify(charges) }
       : r
@@ -70,7 +187,6 @@ export default function CheckOut({ highlightRoom }) {
     await supabase.from("reservations")
       .update({ inspection_status: "requested" })
       .eq("id", res.id);
-    // Insert notification for maintenance staff
     await supabase.from("notifications").insert({
       type:        "inspection_request",
       title:       `Room ${res.room_number} — Inspection Requested`,
@@ -81,9 +197,35 @@ export default function CheckOut({ highlightRoom }) {
       guest_name:  res.guest_name,
       nav_target:  "Maintenance",
     });
-    // Update local state immediately
     setReservations(prev => prev.map(r => r.id === res.id ? { ...r, inspection_status: "requested" } : r));
     setRequesting(null);
+  };
+
+  // ── NEW: intercept Check Out button — show warning if no inspection ──
+  const handleCheckOutClick = (res) => {
+    // Only skip warning if room is confirmed cleared — everything else shows the warning
+    if (res.inspection_status === "cleared") {
+      openCheckOut(res);
+    } else {
+      setPendingCheckoutRes(res);
+      setShowInspectionWarning(true);
+    }
+  };
+
+  // ── Proceed anyway from warning ──
+  const proceedWithoutInspection = () => {
+    setShowInspectionWarning(false);
+    openCheckOut(pendingCheckoutRes);
+    setPendingCheckoutRes(null);
+  };
+
+  // ── Request inspection from warning then cancel checkout ──
+  const requestInspectionFromWarning = async () => {
+    if (pendingCheckoutRes) {
+      await handleRequestInspection(pendingCheckoutRes);
+    }
+    setShowInspectionWarning(false);
+    setPendingCheckoutRes(null);
   };
 
   const openCheckOut = (res) => {
@@ -110,8 +252,6 @@ export default function CheckOut({ highlightRoom }) {
     if (!selected) return;
     setProcessing(true);
 
-    // Snapshot ALL values from current state/selected RIGHT NOW
-    // so re-renders cannot affect them mid-async
     const snap = {
       id:               selected.id,
       guestName:        selected.guest_name,
@@ -129,13 +269,12 @@ export default function CheckOut({ highlightRoom }) {
     const snapInspTotal  = snap.inspCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     const snapGrandTotal = snap.basTotal + snap.extraAmt + snapAddTotal + snapInspTotal;
 
-    // 1. Update reservation status
     const { error: resError } = await supabase
       .from("reservations")
       .update({
-        status:         "checked_out",
-        total_amount:   snapGrandTotal,
-        payment_method: snap.payMethod,
+        status:                   "checked_out",
+        total_amount:             snapGrandTotal,
+        payment_method:           snap.payMethod,
         amount_paid:              snapGrandTotal,
         extra_charges:            snap.extraAmt,
         extra_charges_note:       snap.extraNoteVal,
@@ -149,13 +288,9 @@ export default function CheckOut({ highlightRoom }) {
       return;
     }
 
-    // 2. Update room status
     await supabase.from("rooms").update({ status: "available" }).eq("id", snap.roomId);
 
-    // 3. Remove guest from list immediately
     setReservations(prev => prev.filter(r => r.id !== snap.id));
-
-    // 4. Close modal and clear state
     setShowModal(false);
     setSelected(null);
     setProcessing(false);
@@ -164,7 +299,6 @@ export default function CheckOut({ highlightRoom }) {
     setFullyPaid(false);
     setAmountReceived("");
 
-    // 5. Log in background
     logActivity({
       action:      `Checked out guest: ${snap.guestName}`,
       category:    "check_out",
@@ -186,11 +320,10 @@ export default function CheckOut({ highlightRoom }) {
   const nightsStayed = (checkIn) => Math.max(1, Math.floor((new Date() - new Date(checkIn)) / 86400000));
   const nightsLeft   = (checkOut) => Math.max(0, Math.ceil((new Date(checkOut) - new Date()) / 86400000));
 
-  /* ── TABLE ROW (overdue + today) ── */
+  /* ── TABLE ROW ── */
   const GuestRow = ({ res }) => {
     const nights    = Math.max(0, (new Date(res.check_out) - new Date(res.check_in)) / 86400000);
     const isOverdue = res.check_out < today;
-    const isToday   = res.check_out === today;
     return (
       <tr style={{ borderBottom: "1px solid #f5f5f5", background: highlighted === res.room_number ? "#fff8e1" : "white", transition: "background 0.5s", outline: highlighted === res.room_number ? "2px solid #f59e0b" : "none" }}
         onMouseOver={e => { if (highlighted !== res.room_number) e.currentTarget.style.background = "#fafafa"; }}
@@ -235,7 +368,8 @@ export default function CheckOut({ highlightRoom }) {
                 <RiSearchLine size={13} />{requesting === res.id ? "..." : "Inspect"}
               </button>
             )}
-            <button onClick={() => openCheckOut(res)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#e65100", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.85rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
+            {/* ── Use handleCheckOutClick instead of openCheckOut ── */}
+            <button onClick={() => handleCheckOutClick(res)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#e65100", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.85rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
               <RiLogoutBoxLine size={14} /> Check Out
             </button>
           </div>
@@ -273,7 +407,6 @@ export default function CheckOut({ highlightRoom }) {
     const addTotal = charges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     return (
       <div style={{ background: highlighted === res.room_number ? "#fff8e1" : "white", borderRadius: "14px", overflow: "hidden", boxShadow: highlighted === res.room_number ? "0 0 0 2px #f59e0b" : "0 2px 10px rgba(0,0,0,0.06)", border: highlighted === res.room_number ? "1px solid #f59e0b" : "1px solid #e4ebe4", display: "flex", transition: "all 0.5s" }}>
-        {/* Left green strip */}
         <div style={{ background: "linear-gradient(180deg,#1565c0,#1976d2)", padding: "18px 16px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minWidth: "90px", flexShrink: 0 }}>
           <div style={{ fontSize: "0.62rem", color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "2px" }}>Room</div>
           <div style={{ fontSize: "1.7rem", fontWeight: "700", color: "#fff", lineHeight: 1 }}>{res.room_number}</div>
@@ -285,7 +418,6 @@ export default function CheckOut({ highlightRoom }) {
             {left === 0 ? "Checkout today" : `${left}d left`}
           </div>
         </div>
-        {/* Right body */}
         <div style={{ padding: "14px 18px", flex: 1, minWidth: 0 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "10px" }}>
             {[
@@ -332,7 +464,8 @@ export default function CheckOut({ highlightRoom }) {
                   <RiSearchLine size={13} />{requesting === res.id ? "..." : "Request Inspection"}
                 </button>
               )}
-              <button onClick={() => openCheckOut(res)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#1565c0", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.82rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
+              {/* ── Use handleCheckOutClick instead of openCheckOut ── */}
+              <button onClick={() => handleCheckOutClick(res)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#1565c0", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.82rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
                 <RiLogoutBoxLine size={13} /> Check Out
               </button>
             </div>
@@ -387,11 +520,8 @@ export default function CheckOut({ highlightRoom }) {
         </div>
       ) : (
         <>
-          {/* Overdue & Today — table layout */}
           <SectionTable title="Overdue — Should Have Checked Out" data={overdueList} dot="#c62828" />
           <SectionTable title="Checking Out Today"                data={todayList}   dot="#e65100" />
-
-          {/* Still Staying — vertical card layout */}
           {upcomingList.length > 0 && (
             <div style={{ marginBottom: "24px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
@@ -404,6 +534,18 @@ export default function CheckOut({ highlightRoom }) {
             </div>
           )}
         </>
+      )}
+
+      {/* ══════════════════════════════════════
+          INSPECTION WARNING MODAL
+          ══════════════════════════════════════ */}
+      {showInspectionWarning && pendingCheckoutRes && (
+        <InspectionWarningModal
+          res={pendingCheckoutRes}
+          onRequestInspection={requestInspectionFromWarning}
+          onProceed={proceedWithoutInspection}
+          onCancel={() => { setShowInspectionWarning(false); setPendingCheckoutRes(null); }}
+        />
       )}
 
       {/* ── CHECK-OUT MODAL ── */}
@@ -424,6 +566,14 @@ export default function CheckOut({ highlightRoom }) {
               {successMsg && (
                 <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", color: "#1b5e20", padding: "12px 16px", borderRadius: "8px", marginBottom: "16px", fontSize: "0.88rem", fontWeight: "600" }}>
                   ✅ {successMsg}
+                </div>
+              )}
+
+              {/* No inspection banner inside modal */}
+              {!selected.inspection_status && (
+                <div style={{ background: "#fff8e1", border: "1.5px solid #ffe082", borderRadius: "10px", padding: "10px 14px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px", fontSize: "0.83rem", color: "#f57f17", fontWeight: "600" }}>
+                  <RiAlertLine size={15} color="#f57f17" />
+                  Room was not inspected before check-out.
                 </div>
               )}
 
@@ -562,7 +712,7 @@ export default function CheckOut({ highlightRoom }) {
                   ...(additionalTotal > 0 ? [["In-House Charges", `₱${additionalTotal.toLocaleString()}`]] : []),
                   ...(getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0) > 0 ? [["Damage / Inspection Charges", `₱${getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0).toLocaleString()}`]] : []),
                   ...(extra > 0 ? [["Extra Charges (Check-Out)", `₱${extra.toLocaleString()}`]] : []),
-                  ["Already Paid", `-₱${alreadyPaid.toLocaleString()}`],
+                  ...(alreadyPaid > 0 ? [[`Paid at Check-In`, `-₱${alreadyPaid.toLocaleString()}`]] : []),
                 ].map(([k, v]) => (
                   <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
                     <span style={{ color: "#555" }}>{k}</span>
@@ -571,7 +721,12 @@ export default function CheckOut({ highlightRoom }) {
                 ))}
                 {selected?.pay_later && alreadyPaid === 0 && (
                   <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "8px", padding: "8px 12px", marginTop: "8px", fontSize: "0.8rem", color: "#f57f17", fontWeight: "600" }}>
-                    Guest opted to pay at check-out
+                    Guest opted to pay at check-out — no payment collected at check-in.
+                  </div>
+                )}
+                {selected?.pay_later && alreadyPaid > 0 && (
+                  <div style={{ background: "#e3f2fd", border: "1px solid #90caf9", borderRadius: "8px", padding: "8px 12px", marginTop: "8px", fontSize: "0.8rem", color: "#1565c0", fontWeight: "600" }}>
+                    Partial payment of ₱{alreadyPaid.toLocaleString()} collected at check-in. Remaining balance due now.
                   </div>
                 )}
                 {getAdditionalCharges(selected).length > 0 && (

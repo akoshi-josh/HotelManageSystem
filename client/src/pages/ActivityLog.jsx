@@ -34,21 +34,89 @@ const CSS = `
 .list-badge { font-size:.65rem; font-weight:700; background:#ecfdf5; color:#07713c; border-radius:20px; padding:3px 10px; border:1px solid #d1fae5; }
 
 /* ── LOG CARD ── */
-.log-card { background:#fff; border-radius:14px; border:1px solid #e4ebe4; overflow:hidden; display:flex; margin-bottom:10px; box-shadow:0 1px 4px rgba(0,0,0,.05); transition:box-shadow .15s; }
-.log-card:hover { box-shadow:0 3px 14px rgba(0,0,0,.09); }
-.log-left { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px 14px; min-width:80px; flex-shrink:0; }
-.log-icon-wrap { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-bottom:6px; }
-.log-time { font-size:.6rem; color:#aaa; text-align:center; line-height:1.4; }
-.log-body { padding:14px 18px; flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:6px; }
-.log-top { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.log-action { font-size:.9rem; font-weight:700; color:#222; }
-.log-details { font-size:.81rem; color:#666; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.log-bottom { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.cat-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:20px; font-size:.7rem; font-weight:700; }
-.role-badge { display:inline-flex; padding:3px 9px; border-radius:20px; font-size:.68rem; font-weight:700; }
-.staff-chip { display:inline-flex; align-items:center; gap:6px; }
-.av { width:26px; height:26px; border-radius:50%; background:linear-gradient(135deg,#07713c,#5cb85c); color:#fff; font-weight:700; font-size:.7rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.staff-name { font-size:.8rem; font-weight:600; color:#07713c; }
+.log-card {
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #e4ebe4;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 88px 1fr 180px 160px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.05);
+  transition: box-shadow .15s;
+  align-items: stretch;
+}
+.log-card:hover { box-shadow: 0 3px 14px rgba(0,0,0,.09); }
+
+/* Col 1 — icon + time */
+.log-col-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 10px;
+  border-right: 1px solid #f0f0f0;
+  gap: 6px;
+}
+.log-icon-wrap {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.log-time { font-size: .6rem; color: #aaa; text-align: center; line-height: 1.5; }
+.log-time strong { display: block; font-weight: 700; color: #555; font-size: .68rem; }
+
+/* Col 2 — action + details */
+.log-col-action {
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  border-right: 1px solid #f0f0f0;
+  min-width: 0;
+}
+.log-action { font-size: .9rem; font-weight: 700; color: #222; }
+.log-details {
+  font-size: .8rem; color: #777;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Col 3 — category badge */
+.log-col-cat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 12px;
+  border-right: 1px solid #f0f0f0;
+}
+.cat-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: 20px;
+  font-size: .72rem; font-weight: 700;
+}
+
+/* Col 4 — staff info */
+.log-col-staff {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 14px 16px;
+  gap: 5px;
+}
+.staff-chip { display: inline-flex; align-items: center; gap: 7px; }
+.av {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: linear-gradient(135deg,#07713c,#5cb85c);
+  color: #fff; font-weight: 700; font-size: .7rem;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.staff-name { font-size: .82rem; font-weight: 600; color: #222; }
+.role-badge {
+  display: inline-flex; padding: 3px 9px;
+  border-radius: 20px; font-size: .68rem; font-weight: 700;
+}
 
 .empty { background:#fff; border-radius:14px; border:1px solid #e4ebe4; padding:60px; text-align:center; color:#9aaa9a; font-size:.9rem; }
 
@@ -57,6 +125,22 @@ const CSS = `
 .pg-btn { padding:7px 16px; border:1.5px solid #ccdacc; border-radius:8px; background:#fff; font-weight:700; font-family:Arial,sans-serif; font-size:.84rem; cursor:pointer; color:#07713c; }
 .pg-btn:disabled { color:#aaa; cursor:not-allowed; }
 .pg-info { font-size:.84rem; color:#555; }
+
+/* ── column header row ── */
+.log-table-header {
+  display: grid;
+  grid-template-columns: 88px 1fr 180px 160px;
+  padding: 0 0 8px;
+  border-bottom: 2px solid #e4ebe4;
+  margin-bottom: 10px;
+}
+.log-th {
+  font-size: .68rem; font-weight: 700; color: #aaa;
+  text-transform: uppercase; letter-spacing: .4px;
+  padding: 0 12px;
+}
+.log-th:first-child { text-align: center; padding: 0 10px; }
+.log-th:nth-child(3) { text-align: center; }
 `;
 
 const CATEGORY_CFG = {
@@ -81,7 +165,7 @@ const ROLE_CFG = {
 const PAGE_SIZE = 20;
 
 const formatTime = (ts) => {
-  if (!ts) return "—";
+  if (!ts) return { date: "—", time: "—" };
   const d = new Date(ts);
   const date = d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
   const time = d.toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" });
@@ -99,7 +183,7 @@ export default function ActivityLog() {
   const [total,      setTotal]      = useState(0);
 
   useEffect(() => { fetchUsers(); }, []);
-  useEffect(() => { fetchLogs(); }, [filterCat, filterUser, page]); 
+  useEffect(() => { fetchLogs(); }, [filterCat, filterUser, page]); // eslint-disable-line
 
   const fetchUsers = async () => {
     const { data } = await supabase.from("users").select("id, full_name, role").order("full_name");
@@ -141,6 +225,8 @@ export default function ActivityLog() {
     <>
       <style>{CSS}</style>
       <div className="page">
+
+        {/* Header */}
         <div className="page-hdr">
           <div>
             <h2 className="page-title">Activity Log</h2>
@@ -151,7 +237,7 @@ export default function ActivityLog() {
           </button>
         </div>
 
-   
+        {/* Stat cards */}
         <div className="sc-4">
           {[
             { label: "Total Logs",    val: total,           Icon: RiFileList3Line,         bg: "#e8f5e9", c: "#07713c" },
@@ -166,7 +252,7 @@ export default function ActivityLog() {
           ))}
         </div>
 
-     
+        {/* Filters */}
         <div className="fbar">
           <input className="finput" placeholder="Search action, staff, details..." value={search} onChange={e => setSearch(e.target.value)} />
           <select className="fselect" value={filterCat} onChange={e => { setFilterCat(e.target.value); setPage(1); }}>
@@ -179,13 +265,23 @@ export default function ActivityLog() {
           </select>
         </div>
 
- 
+        {/* List header */}
         <div className="list-hdr">
           <span className="list-title">Activity Timeline</span>
           <span className="list-badge">{total} total entries</span>
         </div>
 
-    
+        {/* Column headers */}
+        {!loading && filtered.length > 0 && (
+          <div className="log-table-header">
+            <div className="log-th">Time</div>
+            <div className="log-th">Action & Details</div>
+            <div className="log-th">Category</div>
+            <div className="log-th">Staff</div>
+          </div>
+        )}
+
+        {/* Log list */}
         {loading ? (
           <div className="empty">Loading logs...</div>
         ) : filtered.length === 0 ? (
@@ -204,43 +300,48 @@ export default function ActivityLog() {
               return (
                 <div key={log.id} className="log-card">
 
-                  <div className="log-left" style={{ background: cat.bg + "66" }}>
+                  {/* Col 1 — icon + time */}
+                  <div className="log-col-icon" style={{ background: cat.bg + "44" }}>
                     <div className="log-icon-wrap" style={{ background: cat.bg }}>
-                      <CatIcon size={18} color={cat.color} />
+                      <CatIcon size={17} color={cat.color} />
                     </div>
                     <div className="log-time">
-                      <div style={{ fontWeight: "700", color: "#555" }}>{t.time}</div>
-                      <div>{t.date}</div>
+                      <strong>{t.time}</strong>
+                      {t.date}
                     </div>
                   </div>
 
-                  <div className="log-body">
-                    <div className="log-top">
-                      <span className="log-action">{log.action}</span>
-                      <span className="cat-badge" style={{ background: cat.bg, color: cat.color }}>
-                        <CatIcon size={11} />{cat.label}
-                      </span>
-                    </div>
-
+                  {/* Col 2 — action + details */}
+                  <div className="log-col-action">
+                    <div className="log-action">{log.action}</div>
                     {log.details && (
                       <div className="log-details" title={log.details}>{log.details}</div>
                     )}
-
-                    <div className="log-bottom">
-                      <div className="staff-chip">
-                        <div className="av">{(log.user_name || "?").slice(0, 2).toUpperCase()}</div>
-                        <span className="staff-name">{log.user_name || "System"}</span>
-                      </div>
-                      <span className="role-badge" style={{ background: role.bg, color: role.color }}>
-                        {log.user_role || "—"}
-                      </span>
-                    </div>
                   </div>
+
+                  {/* Col 3 — category */}
+                  <div className="log-col-cat">
+                    <span className="cat-badge" style={{ background: cat.bg, color: cat.color }}>
+                      <CatIcon size={11} />{cat.label}
+                    </span>
+                  </div>
+
+                  {/* Col 4 — staff */}
+                  <div className="log-col-staff">
+                    <div className="staff-chip">
+                      <div className="av">{(log.user_name || "?").slice(0, 2).toUpperCase()}</div>
+                      <span className="staff-name">{log.user_name || "System"}</span>
+                    </div>
+                    <span className="role-badge" style={{ background: role.bg, color: role.color }}>
+                      {log.user_role || "—"}
+                    </span>
+                  </div>
+
                 </div>
               );
             })}
 
-
+            {/* Pagination */}
             {total > PAGE_SIZE && (
               <div className="pg">
                 <button className="pg-btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>← Prev</button>
@@ -250,6 +351,7 @@ export default function ActivityLog() {
             )}
           </>
         )}
+
       </div>
     </>
   );

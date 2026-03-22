@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   RiToolsLine, RiTimeLine, RiCheckboxCircleLine, RiListCheck2,
   RiLoginBoxLine, RiLogoutBoxLine, RiUserLine, RiStickyNoteLine,
@@ -103,18 +103,18 @@ const TASK_TYPE = {
   inspection:    { label: "Room Inspection Request",  Icon: RiSearchLine,    color: "#c62828", bg: "#fce4ec" },
 };
 const TABS = [
+  { key: "all",                label: "All Tasks",      Icon: RiListCheck2 },
   { key: "pending_inprogress", label: "Needs Cleaning", Icon: RiToolsLine },
   { key: "inspection",         label: "Inspections",    Icon: RiSearchLine },
   { key: "pre_checkin",        label: "Pre Check-In",   Icon: RiLoginBoxLine },
   { key: "post_checkout",      label: "Post Check-Out", Icon: RiLogoutBoxLine },
-  { key: "all",                label: "All Tasks",      Icon: RiListCheck2 },
   { key: "done",               label: "Done",           Icon: RiCheckDoubleLine },
 ];
 
 export default function Maintenance({ user }) {
   const [tasks,      setTasks]      = useState([]);
   const [loading,    setLoading]    = useState(true);
-  const [filter,     setFilter]     = useState("pending_inprogress");
+  const [filter,     setFilter]     = useState("all");
   const [updating,   setUpdating]   = useState(null);
   const [successMsg, setSuccessMsg] = useState("");
   const [inspModal,  setInspModal]  = useState(null);  // task being inspected
@@ -126,6 +126,53 @@ export default function Maintenance({ user }) {
   const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => { fetchTasks(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Realtime: auto-refresh when inspection_status changes on any reservation ── */
+  useEffect(() => {
+    const channel = supabase
+      .channel("maintenance-live")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "reservations" },
+        (payload) => {
+          const n = payload.new;
+          const o = payload.old;
+          if (
+            n.inspection_status !== o.inspection_status ||
+            n.cleaning_status   !== o.cleaning_status
+          ) {
+            fetchTasks();
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log("Maintenance realtime:", status);
+      });
+    return () => supabase.removeChannel(channel);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Realtime: refetch tasks when reservations change (inspection_status update) ── */
+  useEffect(() => {
+    const channel = supabase
+      .channel("maintenance-reservations-live")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "reservations" },
+        (payload) => {
+          // If inspection_status changed to "requested", refetch tasks immediately
+          const n = payload.new;
+          const o = payload.old;
+          if (n.inspection_status !== o.inspection_status || n.cleaning_status !== o.cleaning_status) {
+            fetchTasks();
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log("Maintenance realtime:", status);
+      });
+
+    return () => supabase.removeChannel(channel);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchTasks = async () => {
     setLoading(true);
@@ -294,10 +341,11 @@ export default function Maintenance({ user }) {
   };
 
   const countBy = s => tasks.filter(t => t.status === s).length;
-  const filtered = filter === "all"               ? tasks
+  const filtered = filter === "all"               ? tasks.filter(t => t.status !== "done")
+    : filter === "done"                           ? tasks.filter(t => t.status === "done")
     : filter === "pending_inprogress"             ? tasks.filter(t => t.status !== "done" && t.type !== "inspection")
     : filter === "inspection"                     ? tasks.filter(t => t.type === "inspection")
-    : tasks.filter(t => t.type === filter || t.status === filter);
+    : tasks.filter(t => t.type === filter && t.status !== "done");
 
   const STAT_CARDS = [
     { lbl: "Total Tasks",  val: tasks.length,           Icon: RiListCheck2,         bg: "#f3e5f5", color: "#6a1b9a" },

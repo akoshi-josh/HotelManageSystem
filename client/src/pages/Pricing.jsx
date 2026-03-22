@@ -13,7 +13,7 @@ const TYPE_COLOR = {
   Suite:    { bg: "#f3e5f5", color: "#6a1b9a", border: "#ce93d8" },
 };
 
-const BED_ORDER = ["Single", "Double", "Queen", "King"];
+const BED_ORDER = ["Single", "Queen", "Queen", "Master"];
 
 const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -90,7 +90,7 @@ function BedIcon({ size = 14, color = "#555" }) {
 
 /**
  * Parse bed_config JSONB array OR fall back to bed_type + bed_count.
- * Returns array of {type, count} e.g. [{type:"Single",count:3},{type:"King",count:1}]
+ * Returns array of {type, count} e.g. [{type:"Single",count:3},{type:"Master",count:1}]
  */
 function parseBedConfig(room) {
   try {

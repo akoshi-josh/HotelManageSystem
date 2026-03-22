@@ -14,11 +14,11 @@ const STATUS_CFG = {
   reserved:    { bg: "#e3f2fd", color: "#1565c0", label: "Reserved",    Icon: RiCalendarLine },
 };
 
-const BED_TYPES   = ["Single", "Double", "Queen", "King"];
+const BED_TYPES   = ["Single", "Queen", "Master"];
 const ROOM_TYPES  = ["Standard", "Deluxe", "Suite"];
 
 // Default bed config per room type
-const DEFAULT_BED_CONFIG = { Single: 0, Double: 0, Queen: 0, King: 0 };
+const DEFAULT_BED_CONFIG = { Single: 0, Queen: 0, Master: 0 };
 
 const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -96,13 +96,12 @@ const CSS = `
 
 const BED_INFO = {
   Single: { desc: "Fits 1 person comfortably" },
-  Double: { desc: "Fits 2 persons comfortably" },
   Queen:  { desc: "Fits 2-3 persons comfortably" },
-  King:   { desc: "Master bed, fits 2 persons" },
+  Master: { desc: "Premium master bed, fits 2 persons" },
 };
 
 function calcMaxOccupancy(config) {
-  const per = { Single: 1, Double: 2, Queen: 3, King: 2 };
+  const per = { Single: 1, Queen: 3, Master: 2 };
   return Object.entries(config).reduce((s, [t, n]) => s + (per[t] || 1) * n, 0);
 }
 
@@ -119,7 +118,8 @@ function parseBedConfig(room) {
   } catch {}
   // Fallback to old single bed_type column
   const obj = { ...DEFAULT_BED_CONFIG };
-  if (room.bed_type && BED_TYPES.includes(room.bed_type)) obj[room.bed_type] = room.bed_count || 1;
+  const mappedType = BED_TYPES.includes(room.bed_type) ? room.bed_type : "Single";
+  if (mappedType && BED_TYPES.includes(mappedType)) obj[mappedType] = room.bed_count || 1;
   return obj;
 }
 
@@ -179,8 +179,8 @@ export default function Rooms({ userRole }) {
 
     setSaving(true);
 
-    // Determine primary bed_type (highest priority: King > Queen > Double > Single)
-    const priority = ["King", "Queen", "Double", "Single"];
+    // Determine primary bed_type (highest priority: Master > Queen > Single)
+    const priority = ["Master", "Queen", "Single"];
     const primaryBedType = priority.find(t => bedConfig[t] > 0) || "Single";
     const primaryBedCount = bedConfig[primaryBedType];
     const maxOcc = calcMaxOccupancy(bedConfig);
@@ -279,9 +279,8 @@ export default function Rooms({ userRole }) {
           <select className="finput" value={filterBed} onChange={e => setFilterBed(e.target.value)}>
             <option value="all">All Beds</option>
             <option value="Single">Single Bed</option>
-            <option value="Double">Double Bed</option>
             <option value="Queen">Queen Bed</option>
-            <option value="King">King (Master) Bed</option>
+            <option value="Master">Master Bed</option>
           </select>
         </div>
 
