@@ -7,7 +7,7 @@ import {
 import supabase from "../supabaseClient";
 import { logActivity } from "../logger";
 
-/* ─── shared inline styles ─── */
+/* ─── shared inline styles (mirrors CheckOut) ─── */
 const inputStyle = {
   width: "100%", padding: "10px 14px", border: "2px solid #e8e8e8",
   borderRadius: "8px", fontSize: "0.9rem", outline: "none",
@@ -123,8 +123,6 @@ export default function CheckIn() {
   const [paymentMethod,  setPaymentMethod]  = useState("cash");
   const [fullyPaid,      setFullyPaid]      = useState(false);
   const [amountReceived, setAmountReceived] = useState("");
-  // ── NEW: track if amount field was touched (for validation styling) ──
-  const [amountTouched,  setAmountTouched]  = useState(false);
 
   /* walk-in modal */
   const [showWalkIn,     setShowWalkIn]     = useState(false);
@@ -161,26 +159,20 @@ export default function CheckIn() {
     setPaymentMethod("cash");
     setFullyPaid(false);
     setAmountReceived("");
-    setAmountTouched(false); // reset touched state
     setShowModal(true);
   };
 
   /* ── derived payment values ── */
-  const totalBill   = parseFloat(selected?.total_amount || 0);
+  const getResCharges = (res) => { try { return JSON.parse(res?.additional_charges || "[]"); } catch { return []; } };
+  // total_amount already includes additional_charges (added in Reservations calcTotal)
+  // DO NOT add resChargesTotal again — that would double-count them
+  const totalBill = parseFloat(selected?.total_amount || 0);
   const amtReceived = parseFloat(amountReceived || 0);
   const change      = fullyPaid ? 0 : Math.max(0, amtReceived - totalBill);
   const balance     = fullyPaid ? 0 : Math.max(0, totalBill - amtReceived);
 
-  // ── Amount field is invalid if Pay Now, not fully paid, and empty/zero ──
-  const amountInvalid = !payLater && !fullyPaid && amountTouched && (!amountReceived || amtReceived <= 0);
-
   /* ── confirm check-in ── */
   const handleCheckIn = async () => {
-    // Validate amount before proceeding
-    if (!payLater && !fullyPaid && (!amountReceived || amtReceived <= 0)) {
-      setAmountTouched(true);
-      return;
-    }
     setProcessing(true);
     const checkedId = selected.id;
     const paidAmt   = payLater ? 0 : fullyPaid ? totalBill : amtReceived;
@@ -207,7 +199,6 @@ export default function CheckIn() {
     setProcessing(false);
     setShowModal(false);
     setSelected(null);
-    setAmountTouched(false);
     setTimeout(() => fetchData(), 500);
   };
 
@@ -215,8 +206,20 @@ export default function CheckIn() {
   const calcWalkInTotal = () => {
     const room = rooms.find(r => r.id === walkIn.room_id);
     if (!room || !walkIn.check_in) return 0;
-    if (!walkIn.check_out) return parseFloat(room.price);
-    return Math.max(0, (new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000) * parseFloat(room.price);
+    const nights = walkIn.check_out
+      ? Math.max(0, (new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000)
+      : 1;
+    const roomTotal    = nights * parseFloat(room.price);
+    const chargesTotal = (walkIn.additional_charges || []).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    return roomTotal + chargesTotal;
+  };
+  const calcWalkInRoomOnly = () => {
+    const room = rooms.find(r => r.id === walkIn.room_id);
+    if (!room || !walkIn.check_in) return 0;
+    const nights = walkIn.check_out
+      ? Math.max(0, (new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000)
+      : 1;
+    return nights * parseFloat(room.price);
   };
 
   const handleWalkIn = async () => {
@@ -234,15 +237,23 @@ export default function CheckIn() {
       : 1;
     const total  = nights * parseFloat(room?.price || 0);
 
+    const walkInChargesTotal = (walkIn.additional_charges || []).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    const totalWithCharges = total + walkInChargesTotal;
+    const amtReceived = parseFloat(walkIn.amount_received || 0);
+
     const { error } = await supabase.from("reservations").insert({
       guest_name:  walkIn.guest_name, guest_email: walkIn.guest_email,
       guest_phone: walkIn.guest_phone, room_id: walkIn.room_id,
       room_number: room?.room_number,  check_in:   walkIn.check_in,
       ...(walkIn.check_out ? { check_out: walkIn.check_out } : {}),
-      status: "checked_in", total_amount: total, notes: walkIn.notes,
-      amount_paid:    walkInPayLater ? 0 : (parseFloat(walkIn.amount_received || 0) > 0 ? Math.min(parseFloat(walkIn.amount_received), total) : total),
-      pay_later:      walkInPayLater || (!walkInPayLater && parseFloat(walkIn.amount_received || 0) > 0 && parseFloat(walkIn.amount_received) < total),
+      status: "checked_in",
+      // total_amount = room rate only (charges tracked separately in additional_charges)
+      total_amount: total,
+      notes: walkIn.notes,
+      amount_paid:    walkInPayLater ? 0 : (amtReceived > 0 ? Math.min(amtReceived, totalWithCharges) : totalWithCharges),
+      pay_later:      walkInPayLater || (!walkInPayLater && amtReceived > 0 && amtReceived < totalWithCharges),
       payment_method: walkInPayLater ? "pay_at_checkout" : "cash",
+      // Walk-in charges go into additional_charges (same field as in-house charges)
       additional_charges: JSON.stringify(walkIn.additional_charges || []),
     });
 
@@ -269,6 +280,7 @@ export default function CheckIn() {
   const todayArr    = filtered.filter(r => r.check_in === today);
   const overdueArr  = filtered.filter(r => r.check_in < today);
   const upcomingArr = filtered.filter(r => r.check_in > today);
+  const nights      = selected ? Math.max(0, (new Date(selected.check_out) - new Date(selected.check_in)) / 86400000) : 0;
 
   const GuestCard = ({ res }) => {
     const isOverdue = res.check_in < today;
@@ -330,9 +342,6 @@ export default function CheckIn() {
     </div>
   );
 
-  // ── Confirm button disabled if Pay Now and no valid amount (and not fully paid) ──
-  const confirmDisabled = processing || (!payLater && !fullyPaid && (!amountReceived || amtReceived <= 0));
-
   return (
     <>
       <style>{CSS}</style>
@@ -387,7 +396,7 @@ export default function CheckIn() {
         )}
 
         {/* ════════════════════════════════════════
-            CHECK-IN MODAL
+            CHECK-IN MODAL — same style as CheckOut
             ════════════════════════════════════════ */}
         {showModal && selected && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px", overflowY: "auto" }}>
@@ -424,6 +433,28 @@ export default function CheckIn() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Reservation charges breakdown — baked into total_amount, shown for reference */}
+                  {getResCharges(selected).length > 0 && (
+                    <div style={{ marginTop: "12px", borderTop: "1px dashed #e0e0e0", paddingTop: "12px" }}>
+                      <div style={{ fontSize: "0.72rem", fontWeight: "700", color: "#888", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.4px" }}>
+                        Charges Included in Room Rate
+                      </div>
+                      {getResCharges(selected).map(c => (
+                        <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.83rem", color: "#555", padding: "4px 0", borderBottom: "1px dashed #f0f0f0" }}>
+                          <span>• {c.name}</span>
+                          <span style={{ fontWeight: "600", color: "#07713c" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", fontWeight: "700", marginTop: "8px", paddingTop: "6px", borderTop: "1px solid #e0e0e0" }}>
+                        <span style={{ color: "#333" }}>Total (Room + Charges)</span>
+                        <span style={{ color: "#07713c" }}>₱{totalBill.toLocaleString()}</span>
+                      </div>
+                      <div style={{ fontSize: "0.72rem", color: "#aaa", marginTop: "4px", fontStyle: "italic" }}>
+                        Already included in the room rate above.
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Pay Now / Pay at Checkout toggle */}
@@ -435,7 +466,7 @@ export default function CheckIn() {
                       { val: true,  label: "Pay at Check-Out", sub: "Collect when guest leaves"   },
                     ].map(opt => (
                       <div key={String(opt.val)}
-                        onClick={() => { setPayLater(opt.val); setAmountTouched(false); }}
+                        onClick={() => setPayLater(opt.val)}
                         style={{ flex: 1, padding: "11px", border: `1.5px solid ${payLater === opt.val ? "#07713c" : "#ccdacc"}`, borderRadius: "10px", cursor: "pointer", background: payLater === opt.val ? "#ecfdf5" : "#fff" }}>
                         <div style={{ fontWeight: "700", fontSize: ".84rem", color: "#333" }}>{opt.label}</div>
                         <div style={{ fontSize: ".73rem", color: "#aaa", marginTop: "2px" }}>{opt.sub}</div>
@@ -444,7 +475,7 @@ export default function CheckIn() {
                   </div>
                 </div>
 
-                {/* ── PAY NOW section ── */}
+                {/* ── PAY NOW section — exactly like CheckOut ── */}
                 {!payLater && (
                   <>
                     {/* Payment method */}
@@ -463,13 +494,13 @@ export default function CheckIn() {
                       </div>
                     </div>
 
-                    {/* Collect Payment */}
+                    {/* Collect Payment — identical to CheckOut */}
                     <div style={card}>
                       <div style={sectionTitle("#07713c")}><RiMoneyDollarCircleLine size={13} /> Collect Payment</div>
 
                       {/* Fully paid toggle */}
                       <div
-                        onClick={() => { setFullyPaid(f => !f); if (!fullyPaid) setAmountReceived(totalBill.toString()); setAmountTouched(false); }}
+                        onClick={() => { setFullyPaid(f => !f); if (!fullyPaid) setAmountReceived(totalBill.toString()); }}
                         style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", borderRadius: "10px", border: `2px solid ${fullyPaid ? "#4caf50" : "#e8e8e8"}`, background: fullyPaid ? "#e8f5e9" : "#f8f9fa", cursor: "pointer", marginBottom: "14px", transition: "all 0.2s" }}>
                         <div style={{ width: "22px", height: "22px", borderRadius: "50%", border: `2px solid ${fullyPaid ? "#4caf50" : "#ccc"}`, background: fullyPaid ? "#4caf50" : "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                           {fullyPaid && <span style={{ color: "white", fontSize: "0.75rem", fontWeight: "700" }}>✓</span>}
@@ -484,38 +515,16 @@ export default function CheckIn() {
                       {!fullyPaid && (
                         <>
                           <div style={{ marginBottom: "12px" }}>
-                            {/* ── UPDATED label with required asterisk ── */}
-                            <label style={labelStyle}>
-                              Amount Received (₱) <span style={{ color: "#e53935" }}>*</span>
-                            </label>
+                            <label style={labelStyle}>Amount Received (₱)</label>
                             <input
                               type="number"
                               value={amountReceived}
-                              onChange={e => { setAmountReceived(e.target.value); setAmountTouched(true); }}
-                              // ── UPDATED placeholder: smaller size, regular weight via style ──
-                              placeholder="Enter amount"
-                              style={{
-                                ...inputStyle,
-                                fontSize: "1rem",
-                                fontWeight: "700",
-                                // border highlights red if invalid after touch
-                                border: amountInvalid ? "2px solid #e53935" : "2px solid #e8e8e8",
-                              }}
-                              onFocus={e => { e.target.style.borderColor = amountInvalid ? "#e53935" : "#07713c"; }}
-                              onBlur={e => { setAmountTouched(true); e.target.style.borderColor = amountInvalid ? "#e53935" : "#e8e8e8"; }}
+                              onChange={e => setAmountReceived(e.target.value)}
+                              placeholder="Enter amount given by guest"
+                              style={{ ...inputStyle, fontSize: "1rem", fontWeight: "700" }}
+                              onFocus={e => e.target.style.borderColor = "#07713c"}
+                              onBlur={e => e.target.style.borderColor = "#e8e8e8"}
                             />
-                            {/* ── inline placeholder-style hint text ── */}
-                            {!amountReceived && !amountTouched && (
-                              <div style={{ fontSize: "0.75rem", fontWeight: "400", color: "#aaa", marginTop: "5px" }}>
-                                Enter the amount given by the guest
-                              </div>
-                            )}
-                            {/* ── validation error message ── */}
-                            {amountInvalid && (
-                              <div style={{ fontSize: "0.75rem", color: "#e53935", marginTop: "5px", fontWeight: "500" }}>
-                                Amount received is required to proceed.
-                              </div>
-                            )}
                           </div>
 
                           {/* Change to return */}
@@ -562,8 +571,8 @@ export default function CheckIn() {
                   </button>
                   <button
                     onClick={handleCheckIn}
-                    disabled={confirmDisabled}
-                    style={{ flex: 2, padding: "13px", background: confirmDisabled ? "#aaa" : "#07713c", border: "none", borderRadius: "10px", cursor: confirmDisabled ? "not-allowed" : "pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px" }}>
+                    disabled={processing || (!payLater && !fullyPaid && (!amountReceived || amtReceived <= 0))}
+                    style={{ flex: 2, padding: "13px", background: processing ? "#aaa" : "#07713c", border: "none", borderRadius: "10px", cursor: processing ? "not-allowed" : "pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px" }}>
                     <RiLoginBoxLine size={16} />
                     {processing ? "Processing..." : "Confirm Check-In"}
                   </button>
@@ -626,12 +635,12 @@ export default function CheckIn() {
                       <input type="date" className="fi" value={walkIn.check_out} onChange={e => setWalkIn({ ...walkIn, check_out: e.target.value })} />
                     </div>
                   </div>
-                  {calcWalkInTotal() > 0 && (
+                  {calcWalkInRoomOnly() > 0 && (
                     <div className="total-bar-blue" style={{ marginTop: "10px" }}>
                       <span style={{ color: "rgba(255,255,255,.75)", fontSize: ".86rem" }}>
                         {walkIn.check_out ? `${Math.round((new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000)} nights` : "Open-ended · per night"}
                       </span>
-                      <span style={{ color: "#fff", fontWeight: "700" }}>₱{calcWalkInTotal().toLocaleString()}</span>
+                      <span style={{ color: "#fff", fontWeight: "700" }}>₱{calcWalkInRoomOnly().toLocaleString()}</span>
                     </div>
                   )}
                 </div>
@@ -649,28 +658,41 @@ export default function CheckIn() {
                       </div>
                     ))}
                   </div>
+                  {/* Amount received input — only when Pay Now */}
                   {!walkInPayLater && (
                     <>
+                      {/* Bill breakdown if there are additional charges */}
+                      {(walkIn.additional_charges || []).length > 0 && (
+                        <div style={{ marginTop: "12px", background: "#f4f6f0", borderRadius: "10px", padding: "12px 14px" }}>
+                          <div style={{ fontSize: ".68rem", fontWeight: "700", color: "#555", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "8px" }}>Bill Breakdown</div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".83rem", color: "#555", marginBottom: "4px" }}>
+                            <span>Room Rate</span>
+                            <span style={{ fontWeight: "600" }}>₱{calcWalkInRoomOnly().toLocaleString()}</span>
+                          </div>
+                          {(walkIn.additional_charges || []).map(c => (
+                            <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: ".83rem", color: "#555", marginBottom: "4px" }}>
+                              <span>• {c.name}</span>
+                              <span style={{ fontWeight: "600" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                            </div>
+                          ))}
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".88rem", fontWeight: "700", borderTop: "1px solid #ddd", paddingTop: "6px", marginTop: "4px" }}>
+                            <span style={{ color: "#333" }}>Total to Collect</span>
+                            <span style={{ color: "#1565c0" }}>₱{calcWalkInTotal().toLocaleString()}</span>
+                          </div>
+                        </div>
+                      )}
                       <div style={{ marginTop: "12px", marginBottom: "10px" }}>
-                        <label className="flabel" style={{ display:"block", fontSize:".8rem", fontWeight:"700", color:"#555", marginBottom:"5px", textTransform:"uppercase", letterSpacing:"0.4px" }}>
-                          Amount Received (₱)
-                        </label>
+                        <label className="flabel" style={{ display:"block", fontSize:".8rem", fontWeight:"700", color:"#555", marginBottom:"5px", textTransform:"uppercase", letterSpacing:"0.4px" }}>Amount Received (₱)</label>
                         <input
                           type="number"
                           className="fi"
                           style={{ fontSize: "1rem", fontWeight: "700" }}
                           value={walkIn.amount_received || ""}
                           onChange={e => setWalkIn({ ...walkIn, amount_received: e.target.value })}
-                          placeholder="Enter amount"
+                          placeholder="Enter amount given by guest"
                           onFocus={e => e.target.style.borderColor = "#1565c0"}
                           onBlur={e => e.target.style.borderColor = "#ccdacc"}
                         />
-                        {/* hint text */}
-                        {!walkIn.amount_received && (
-                          <div style={{ fontSize: "0.75rem", fontWeight: "400", color: "#aaa", marginTop: "5px" }}>
-                            Enter the amount given by the guest
-                          </div>
-                        )}
                       </div>
                       {parseFloat(walkIn.amount_received || 0) > calcWalkInTotal() && calcWalkInTotal() > 0 && (
                         <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>

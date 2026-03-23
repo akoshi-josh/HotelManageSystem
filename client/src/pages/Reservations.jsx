@@ -83,7 +83,9 @@ export default function Reservations() {
   const calcTotal = () => {
     const room = rooms.find(r => r.id === form.room_id);
     if (!room) return 0;
-    return calcNights() * parseFloat(room.price);
+    const roomTotal = calcNights() * parseFloat(room.price);
+    const chargesTotal = (form.additional_charges || []).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    return roomTotal + chargesTotal;
   };
 
   const selectedRoom = rooms.find(r => r.id === form.room_id);
@@ -109,6 +111,13 @@ export default function Reservations() {
   const handleSave = async () => {
     setError("");
     if (!form.guest_name)  { setError("Guest name is required."); return; }
+    if (form.guest_email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(form.guest_email)) {
+        setError("Please enter a valid email address (e.g. name@example.com).");
+        return;
+      }
+    }
     if (!form.room_id)     { setError("Please select a room."); return; }
     if (!form.check_in)    { setError("Check-in date is required."); return; }
     // check_out is optional — open stay allowed
@@ -121,8 +130,13 @@ export default function Reservations() {
       room_number: room?.room_number, check_in: form.check_in,
       ...(form.check_out ? { check_out: form.check_out } : {}),
       status: form.status,
+      // total_amount includes reservation charges (room*nights + charges)
+      // Keep additional_charges with a 'from_reservation' flag so CheckIn can show breakdown
+      // InHouse will know these are pre-existing reservation charges (not in-stay additions)
       total_amount: calcTotal(), notes: form.notes,
-      additional_charges: JSON.stringify(form.additional_charges || [])
+      additional_charges: JSON.stringify(
+        (form.additional_charges || []).map(c => ({ ...c, from_reservation: true }))
+      )
     };
     if (editRes) {
       const { error: updateError } = await supabase.from("reservations").update(payload).eq("id", editRes.id);
@@ -151,7 +165,7 @@ export default function Reservations() {
         ? Math.max(0, (new Date(form.check_out) - new Date(form.check_in)) / 86400000)
         : 0;
       try {
-        await fetch("http://localhost:5000/api/send-reservation-email", {
+        const emailRes = await fetch("http://localhost:5000/api/send-reservation-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -166,6 +180,12 @@ export default function Reservations() {
             notes:        form.notes,
           }),
         });
+        const emailData = await emailRes.json();
+        console.log("Email API response:", emailData);
+        if (!emailRes.ok) {
+          console.error("Email failed:", emailData.error);
+          alert("Reservation saved! But email failed: " + emailData.error);
+        }
       } catch (e) {
         console.warn("Email send failed (non-blocking):", e.message);
       }

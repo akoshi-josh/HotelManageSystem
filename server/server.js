@@ -102,6 +102,13 @@ app.post('/api/send-reservation-email', async (req, res) => {
     return res.status(400).json({ error: 'Guest email is required.' });
   }
 
+  // Validate email format before attempting to send
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(guest_email)) {
+    console.log('Skipping email — invalid format:', guest_email);
+    return res.status(400).json({ error: `Invalid email address: "${guest_email}". Please use a full email like name@example.com` });
+  }
+
   const isOpenStay = !check_out;
   const formattedTotal = parseFloat(total_amount || 0).toLocaleString('en-PH', {
     minimumFractionDigits: 2,
@@ -187,13 +194,13 @@ app.post('/api/send-reservation-email', async (req, res) => {
       <p class="footer-msg">
         If you have any questions or need to make changes, please contact us directly.
         We look forward to your visit!
-        -akoshijosh
       </p>
     </div>
 
     <div class="divider"></div>
     <div class="footer">
       This is an automated confirmation. Please do not reply to this email.
+      Akushi_Josh.singson
     </div>
   </div>
 </body>

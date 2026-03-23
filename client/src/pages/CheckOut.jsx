@@ -96,51 +96,32 @@ export default function CheckOut({ highlightRoom }) {
   const [requesting,     setRequesting]     = useState(null);
   const [editingCharge,  setEditingCharge]  = useState(null);
   const [highlighted,    setHighlighted]    = useState(null);
-  // ── NEW: inspection warning state ──
   const [showInspectionWarning, setShowInspectionWarning] = useState(false);
   const [pendingCheckoutRes,    setPendingCheckoutRes]    = useState(null);
 
   const today = new Date().toISOString().split("T")[0];
-  useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Realtime ── */
+  // ── Initial load only (no loading spinner on polls)
+  useEffect(() => {
+    fetchData(false);
+    const poll = setInterval(() => fetchData(true), 5000);
+    return () => clearInterval(poll);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Realtime: inspection status updates instantly
   useEffect(() => {
     const channel = supabase
       .channel("checkout-live")
-      .on(
-        "postgres_changes",
+      .on("postgres_changes",
         { event: "UPDATE", schema: "public", table: "reservations" },
         (payload) => {
           const n = payload.new;
           const o = payload.old;
-          if (n.inspection_status !== o.inspection_status ||
-              n.inspection_charges !== o.inspection_charges ||
-              n.inspection_notes   !== o.inspection_notes) {
-            setReservations(prev =>
-              prev.map(r => r.id === n.id ? { ...r, ...n } : r)
-            );
-            setSelected(prev =>
-              prev && prev.id === n.id ? { ...prev, ...n } : prev
-            );
-          }
-        }
-      )
-      .subscribe((status) => {
-        console.log("CheckOut realtime:", status);
-      });
-    return () => supabase.removeChannel(channel);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const channel = supabase
-      .channel("checkout-reservations-live")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "reservations" },
-        (payload) => {
-          const n = payload.new;
-          const o = payload.old;
-          if (n.inspection_status !== o.inspection_status || n.inspection_charges !== o.inspection_charges) {
+          if (
+            n.inspection_status  !== o.inspection_status  ||
+            n.inspection_charges !== o.inspection_charges ||
+            n.inspection_notes   !== o.inspection_notes
+          ) {
             setReservations(prev => prev.map(r => r.id === n.id ? { ...r, ...n } : r));
             setSelected(prev => prev && prev.id === n.id ? { ...prev, ...n } : prev);
           }
@@ -157,11 +138,26 @@ export default function CheckOut({ highlightRoom }) {
     }
   }, [highlightRoom]);
 
-  const fetchData = async () => {
-    setLoading(true);
-    const { data } = await supabase.from("reservations").select("*").eq("status", "checked_in").order("check_out");
-    setReservations(data || []);
-    setLoading(false);
+  // ── silent=true: no loading spinner, only update state if data changed
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true);
+    const { data } = await supabase
+      .from("reservations").select("*")
+      .eq("status", "checked_in").order("check_out");
+    const incoming = data || [];
+    setReservations(prev => {
+      if (prev.length !== incoming.length) return incoming;
+      const changed = incoming.some((r, i) =>
+        !prev[i] ||
+        prev[i].id                 !== r.id                 ||
+        prev[i].inspection_status  !== r.inspection_status  ||
+        prev[i].inspection_charges !== r.inspection_charges ||
+        prev[i].total_amount       !== r.total_amount       ||
+        prev[i].check_out          !== r.check_out
+      );
+      return changed ? incoming : prev;
+    });
+    if (!silent) setLoading(false);
   };
 
   const getInspectionCharges = (res) => { try { return JSON.parse(res?.inspection_charges || "[]"); } catch { return []; } };
@@ -201,9 +197,7 @@ export default function CheckOut({ highlightRoom }) {
     setRequesting(null);
   };
 
-  // ── NEW: intercept Check Out button — show warning if no inspection ──
   const handleCheckOutClick = (res) => {
-    // Only skip warning if room is confirmed cleared — everything else shows the warning
     if (res.inspection_status === "cleared") {
       openCheckOut(res);
     } else {
@@ -212,14 +206,12 @@ export default function CheckOut({ highlightRoom }) {
     }
   };
 
-  // ── Proceed anyway from warning ──
   const proceedWithoutInspection = () => {
     setShowInspectionWarning(false);
     openCheckOut(pendingCheckoutRes);
     setPendingCheckoutRes(null);
   };
 
-  // ── Request inspection from warning then cancel checkout ──
   const requestInspectionFromWarning = async () => {
     if (pendingCheckoutRes) {
       await handleRequestInspection(pendingCheckoutRes);
@@ -238,11 +230,18 @@ export default function CheckOut({ highlightRoom }) {
   };
 
   const getAdditionalCharges = (res) => { try { return JSON.parse(res?.additional_charges || "[]"); } catch { return []; } };
+  // Walk-in guests: additional_charges = charges added AT check-in (already in total_amount? No — walk-in saves them separately)
+  // For checkout, additional_charges = in-house charges added DURING stay (from InHouse page)
+  // These are separate from total_amount and need to be added to the bill
 
   const basTotal        = parseFloat(selected?.total_amount || 0);
   const alreadyPaid     = parseFloat(selected?.amount_paid  || 0);
   const extra           = parseFloat(extraCharges           || 0);
-  const additionalTotal = selected ? getAdditionalCharges(selected).reduce((s, c) => s + parseFloat(c.amount || 0), 0) : 0;
+  // additional_charges contains both reservation charges (from_reservation=true, already in total_amount)
+  // and in-house charges (from_reservation=false/undefined, need to be added to bill)
+  const additionalTotal = selected
+    ? getAdditionalCharges(selected).filter(c => !c.from_reservation).reduce((s, c) => s + parseFloat(c.amount || 0), 0)
+    : 0;
   const inspectionTotal = selected ? getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0) : 0;
   const grandTotal      = basTotal + extra + additionalTotal + inspectionTotal;
   const balanceDue      = Math.max(0, grandTotal - alreadyPaid);
@@ -265,20 +264,21 @@ export default function CheckOut({ highlightRoom }) {
       addCharges:       getAdditionalCharges(selected),
       inspCharges:      getInspectionCharges(selected),
     };
-    const snapAddTotal   = snap.addCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    // snapAddTotal = in-house charges only (from_reservation=false), reservation charges already in basTotal
+    const snapAddTotal   = snap.addCharges.filter(c => !c.from_reservation).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     const snapInspTotal  = snap.inspCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     const snapGrandTotal = snap.basTotal + snap.extraAmt + snapAddTotal + snapInspTotal;
 
     const { error: resError } = await supabase
       .from("reservations")
       .update({
-        status:                   "checked_out",
-        total_amount:             snapGrandTotal,
-        payment_method:           snap.payMethod,
-        amount_paid:              snapGrandTotal,
-        extra_charges:            snap.extraAmt,
-        extra_charges_note:       snap.extraNoteVal,
-        checked_out_at:           new Date().toISOString(),
+        status:             "checked_out",
+        total_amount:       snapGrandTotal,
+        payment_method:     snap.payMethod,
+        amount_paid:        snapGrandTotal,
+        extra_charges:      snap.extraAmt,
+        extra_charges_note: snap.extraNoteVal,
+        checked_out_at:     new Date().toISOString(),
       })
       .eq("id", snap.id);
 
@@ -288,7 +288,7 @@ export default function CheckOut({ highlightRoom }) {
       return;
     }
 
-    await supabase.from("rooms").update({ status: "available" }).eq("id", snap.roomId);
+    await supabase.from("rooms").update({ status: "needs_cleaning" }).eq("id", snap.roomId);
 
     setReservations(prev => prev.filter(r => r.id !== snap.id));
     setShowModal(false);
@@ -313,11 +313,11 @@ export default function CheckOut({ highlightRoom }) {
     (r.room_number || "").includes(search)
   );
 
-  const overdueList   = filtered.filter(r => r.check_out < today);
-  const todayList     = filtered.filter(r => r.check_out === today);
-  const upcomingList  = filtered.filter(r => r.check_out > today);
+  const overdueList  = filtered.filter(r => r.check_out < today);
+  const todayList    = filtered.filter(r => r.check_out === today);
+  const upcomingList = filtered.filter(r => r.check_out > today);
 
-  const nightsStayed = (checkIn) => Math.max(1, Math.floor((new Date() - new Date(checkIn)) / 86400000));
+  const nightsStayed = (checkIn)  => Math.max(1, Math.floor((new Date() - new Date(checkIn)) / 86400000));
   const nightsLeft   = (checkOut) => Math.max(0, Math.ceil((new Date(checkOut) - new Date()) / 86400000));
 
   /* ── TABLE ROW ── */
@@ -368,7 +368,6 @@ export default function CheckOut({ highlightRoom }) {
                 <RiSearchLine size={13} />{requesting === res.id ? "..." : "Inspect"}
               </button>
             )}
-            {/* ── Use handleCheckOutClick instead of openCheckOut ── */}
             <button onClick={() => handleCheckOutClick(res)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#e65100", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.85rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
               <RiLogoutBoxLine size={14} /> Check Out
             </button>
@@ -401,9 +400,9 @@ export default function CheckOut({ highlightRoom }) {
 
   /* ── VERTICAL CARD (still staying) ── */
   const StayingCard = ({ res }) => {
-    const stayed  = nightsStayed(res.check_in);
-    const left    = nightsLeft(res.check_out);
-    const charges = getAdditionalCharges(res);
+    const stayed   = nightsStayed(res.check_in);
+    const left     = nightsLeft(res.check_out);
+    const charges  = getAdditionalCharges(res);
     const addTotal = charges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     return (
       <div style={{ background: highlighted === res.room_number ? "#fff8e1" : "white", borderRadius: "14px", overflow: "hidden", boxShadow: highlighted === res.room_number ? "0 0 0 2px #f59e0b" : "0 2px 10px rgba(0,0,0,0.06)", border: highlighted === res.room_number ? "1px solid #f59e0b" : "1px solid #e4ebe4", display: "flex", transition: "all 0.5s" }}>
@@ -421,10 +420,10 @@ export default function CheckOut({ highlightRoom }) {
         <div style={{ padding: "14px 18px", flex: 1, minWidth: 0 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "10px" }}>
             {[
-              { Icon: RiUserLine,               lbl: "Guest",       val: res.guest_name },
-              { Icon: RiCalendarLine,           lbl: "Check-Out",   val: res.check_out, warn: left <= 1 },
-              { Icon: RiMoneyDollarCircleLine,  lbl: "Room Rate",   val: `₱${parseFloat(res.total_amount || 0).toLocaleString()}` },
-              { Icon: RiCheckboxCircleLine,     lbl: "Payment",     val: res.pay_later ? "At Check-Out" : "Paid", warn: res.pay_later },
+              { Icon: RiUserLine,              lbl: "Guest",     val: res.guest_name },
+              { Icon: RiCalendarLine,          lbl: "Check-Out", val: res.check_out, warn: left <= 1 },
+              { Icon: RiMoneyDollarCircleLine, lbl: "Room Rate", val: `₱${parseFloat(res.total_amount || 0).toLocaleString()}` },
+              { Icon: RiCheckboxCircleLine,    lbl: "Payment",   val: res.pay_later ? "At Check-Out" : "Paid", warn: res.pay_later },
             ].map(({ Icon, lbl, val, warn }) => (
               <div key={lbl} style={{ background: "#f4f6f0", borderRadius: "8px", padding: "8px 10px" }}>
                 <div style={{ fontSize: "0.64rem", color: "#8a9a8a", fontWeight: "700", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "3px", marginBottom: "2px" }}>
@@ -464,7 +463,6 @@ export default function CheckOut({ highlightRoom }) {
                   <RiSearchLine size={13} />{requesting === res.id ? "..." : "Request Inspection"}
                 </button>
               )}
-              {/* ── Use handleCheckOutClick instead of openCheckOut ── */}
               <button onClick={() => handleCheckOutClick(res)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#1565c0", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.82rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
                 <RiLogoutBoxLine size={13} /> Check Out
               </button>
@@ -485,10 +483,10 @@ export default function CheckOut({ highlightRoom }) {
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
         {[
-          { label: "Currently Staying",  value: reservations.length,                                     Icon: RiUserLine,          bg: "#e8f5e9", color: "#1b5e20" },
-          { label: "Overdue Check-Outs", value: reservations.filter(r => r.check_out < today).length,   Icon: RiErrorWarningLine,  bg: "#fce4ec", color: "#c62828" },
-          { label: "Checking Out Today", value: reservations.filter(r => r.check_out === today).length, Icon: RiLogoutBoxLine,     bg: "#fff3e0", color: "#e65100" },
-          { label: "Upcoming",           value: reservations.filter(r => r.check_out > today).length,   Icon: RiCalendarLine,      bg: "#e3f2fd", color: "#1565c0" },
+          { label: "Currently Staying",  value: reservations.length,                                     Icon: RiUserLine,         bg: "#e8f5e9", color: "#1b5e20" },
+          { label: "Overdue Check-Outs", value: reservations.filter(r => r.check_out < today).length,   Icon: RiErrorWarningLine, bg: "#fce4ec", color: "#c62828" },
+          { label: "Checking Out Today", value: reservations.filter(r => r.check_out === today).length, Icon: RiLogoutBoxLine,    bg: "#fff3e0", color: "#e65100" },
+          { label: "Upcoming",           value: reservations.filter(r => r.check_out > today).length,   Icon: RiCalendarLine,     bg: "#e3f2fd", color: "#1565c0" },
         ].map(({ label, value, Icon, bg, color }) => (
           <div key={label} style={{ background: bg, borderRadius: "14px", padding: "20px 24px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
@@ -536,9 +534,7 @@ export default function CheckOut({ highlightRoom }) {
         </>
       )}
 
-      {/* ══════════════════════════════════════
-          INSPECTION WARNING MODAL
-          ══════════════════════════════════════ */}
+      {/* INSPECTION WARNING MODAL */}
       {showInspectionWarning && pendingCheckoutRes && (
         <InspectionWarningModal
           res={pendingCheckoutRes}
@@ -548,7 +544,7 @@ export default function CheckOut({ highlightRoom }) {
         />
       )}
 
-      {/* ── CHECK-OUT MODAL ── */}
+      {/* CHECK-OUT MODAL */}
       {showModal && selected && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px" }}>
           <div style={{ background: "#f8f9fa", borderRadius: "20px", width: "520px", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", fontFamily: "Arial,sans-serif" }}>
@@ -569,7 +565,7 @@ export default function CheckOut({ highlightRoom }) {
                 </div>
               )}
 
-              {/* No inspection banner inside modal */}
+              {/* No inspection banner */}
               {!selected.inspection_status && (
                 <div style={{ background: "#fff8e1", border: "1.5px solid #ffe082", borderRadius: "10px", padding: "10px 14px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px", fontSize: "0.83rem", color: "#f57f17", fontWeight: "600" }}>
                   <RiAlertLine size={15} color="#f57f17" />
@@ -629,7 +625,7 @@ export default function CheckOut({ highlightRoom }) {
                 </div>
               </div>
 
-              {/* Notes */}
+              {/* Guest Notes */}
               {selected?.notes && (
                 <div style={{ background: "#fffde7", border: "1px solid #fff176", borderRadius: "10px", padding: "10px 14px", marginBottom: "16px", display: "flex", gap: "8px", alignItems: "flex-start", fontSize: "0.83rem", color: "#555" }}>
                   <RiStickyNoteLine size={14} color="#f59e0b" style={{ flexShrink: 0, marginTop: "1px" }} />
@@ -637,7 +633,7 @@ export default function CheckOut({ highlightRoom }) {
                 </div>
               )}
 
-              {/* Inspection result banner in modal */}
+              {/* Inspection result banner */}
               {selected?.inspection_status === "has_damage" && (
                 <div style={{ background: "#fce4ec", border: "1.5px solid #ef9a9a", borderRadius: "10px", padding: "14px 16px", marginBottom: "16px" }}>
                   <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" }}>
@@ -658,10 +654,7 @@ export default function CheckOut({ highlightRoom }) {
                           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                             {editingCharge?.index === i ? (
                               <>
-                                <input
-                                  type="number"
-                                  autoFocus
-                                  defaultValue={c.tbd ? "" : c.amount}
+                                <input type="number" autoFocus defaultValue={c.tbd ? "" : c.amount}
                                   style={{ width: "90px", padding: "4px 8px", border: "1.5px solid #c62828", borderRadius: "6px", fontSize: ".83rem", outline: "none", fontFamily: "Arial,sans-serif" }}
                                   onKeyDown={e => {
                                     if (e.key === "Enter") saveChargePrice(selected, i, e.target.value);
@@ -707,18 +700,89 @@ export default function CheckOut({ highlightRoom }) {
               {/* Bill Breakdown */}
               <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
                 <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px" }}>Bill Breakdown</div>
-                {[
-                  ["Room Charge", `₱${basTotal.toLocaleString()}`],
-                  ...(additionalTotal > 0 ? [["In-House Charges", `₱${additionalTotal.toLocaleString()}`]] : []),
-                  ...(getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0) > 0 ? [["Damage / Inspection Charges", `₱${getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0).toLocaleString()}`]] : []),
-                  ...(extra > 0 ? [["Extra Charges (Check-Out)", `₱${extra.toLocaleString()}`]] : []),
-                  ...(alreadyPaid > 0 ? [[`Paid at Check-In`, `-₱${alreadyPaid.toLocaleString()}`]] : []),
-                ].map(([k, v]) => (
-                  <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
-                    <span style={{ color: "#555" }}>{k}</span>
-                    <span style={{ fontWeight: "600", color: k === "Already Paid" ? "#4caf50" : "#333" }}>{v}</span>
+
+                {/* ── Refund banner: only shows when stay was shortened via In-House ── */}
+                {selected?.refund_amount > 0 && selected?.original_checkout && (
+                  <div style={{ background: "#fff8e1", border: "1.5px solid #ffe082", borderRadius: "10px", padding: "14px 16px", marginBottom: "14px" }}>
+                    <div style={{ fontSize: ".7rem", fontWeight: 700, color: "#f57f17", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>
+                      ⚠ Stay Was Shortened — Refund Applied
+                    </div>
+                    {[
+                      ["Original Check-Out",       selected.original_checkout],
+                      ["New Check-Out",             selected.check_out],
+                      ["Last Payment (Original)",  `₱${parseFloat(selected.original_amount || 0).toLocaleString()}`],
+                    ].map(([k, v]) => (
+                      <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: ".84rem", color: "#555", marginBottom: 6, paddingBottom: 6, borderBottom: "1px dashed #ffe082" }}>
+                        <span>{k}</span>
+                        <span style={{ fontWeight: 700, color: "#333" }}>{v}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".92rem", fontWeight: 700, color: "#c62828", paddingTop: 4 }}>
+                      <span>Refund Issued to Guest</span>
+                      <span>−₱{parseFloat(selected.refund_amount).toLocaleString()}</span>
+                    </div>
                   </div>
-                ))}
+                )}
+
+                {/* ── Standard line items ── */}
+
+                {/* Room Charge — basTotal */}
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
+                  <span style={{ color: "#555" }}>Room Charge</span>
+                  <span style={{ fontWeight: "600", color: "#333" }}>₱{basTotal.toLocaleString()}</span>
+                </div>
+
+                {/* Reservation charges — already in Room Charge, shown as breakdown */}
+                {getAdditionalCharges(selected).filter(c => c.from_reservation).length > 0 && (
+                  <div style={{ marginBottom: "4px" }}>
+                    {getAdditionalCharges(selected).filter(c => c.from_reservation).map(c => (
+                      <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.79rem", color: "#888", padding: "2px 0 2px 12px" }}>
+                        <span>• {c.name} <span style={{ fontSize: ".7rem", color: "#bbb" }}>(reservation)</span></span>
+                        <span style={{ fontWeight: "600", color: "#aaa" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* In-House Charges — added during stay via InHouse page */}
+                {additionalTotal > 0 && (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
+                      <span style={{ color: "#6a1b9a", fontWeight: "600" }}>In-House Charges (during stay)</span>
+                      <span style={{ fontWeight: "600", color: "#6a1b9a" }}>₱{additionalTotal.toLocaleString()}</span>
+                    </div>
+                    {getAdditionalCharges(selected).filter(c => !c.from_reservation).map(c => (
+                      <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.79rem", color: "#888", padding: "2px 0 2px 12px" }}>
+                        <span>• {c.name}</span>
+                        <span style={{ fontWeight: "600" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {/* Inspection / Damage charges */}
+                {getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0) > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
+                    <span style={{ color: "#c62828", fontWeight: "600" }}>Damage / Inspection Charges</span>
+                    <span style={{ fontWeight: "600", color: "#c62828" }}>₱{getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0).toLocaleString()}</span>
+                  </div>
+                )}
+
+                {/* Extra charges added at checkout */}
+                {extra > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
+                    <span style={{ color: "#555" }}>Extra Charges (Check-Out)</span>
+                    <span style={{ fontWeight: "600", color: "#333" }}>₱{extra.toLocaleString()}</span>
+                  </div>
+                )}
+
+                {/* Already paid at check-in */}
+                {alreadyPaid > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
+                    <span style={{ color: "#555" }}>Paid at Check-In</span>
+                    <span style={{ fontWeight: "600", color: "#4caf50" }}>-₱{alreadyPaid.toLocaleString()}</span>
+                  </div>
+                )}
                 {selected?.pay_later && alreadyPaid === 0 && (
                   <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "8px", padding: "8px 12px", marginTop: "8px", fontSize: "0.8rem", color: "#f57f17", fontWeight: "600" }}>
                     Guest opted to pay at check-out — no payment collected at check-in.
@@ -729,16 +793,7 @@ export default function CheckOut({ highlightRoom }) {
                     Partial payment of ₱{alreadyPaid.toLocaleString()} collected at check-in. Remaining balance due now.
                   </div>
                 )}
-                {getAdditionalCharges(selected).length > 0 && (
-                  <div style={{ marginTop: "8px" }}>
-                    <div style={{ fontSize: "0.72rem", color: "#aaa", fontWeight: "700", textTransform: "uppercase", marginBottom: "4px" }}>In-House Charge Details</div>
-                    {getAdditionalCharges(selected).map(c => (
-                      <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "#666", padding: "2px 0" }}>
-                        <span>• {c.name}</span><span style={{ fontWeight: "600" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* In-House charge details shown inline above */}
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 4px", fontSize: "1.05rem" }}>
                   <span style={{ fontWeight: "700", color: "#333" }}>Balance Due</span>
                   <span style={{ fontWeight: "700", color: balanceDue > 0 ? "#e65100" : "#4caf50", fontSize: "1.2rem" }}>₱{balanceDue.toLocaleString()}</span>

@@ -3,7 +3,7 @@ import {
   RiHotelBedLine, RiUserLine, RiCalendarLine, RiAddCircleLine,
   RiMoneyDollarCircleLine, RiStickyNoteLine, RiTimeLine,
   RiCheckboxCircleLine, RiDeleteBinLine, RiEyeLine, RiLoginBoxLine,
-  RiCalendar2Line,
+  RiCalendar2Line, RiSaveLine,
 } from "react-icons/ri";
 import supabase from "../supabaseClient";
 import { logActivity } from "../logger";
@@ -108,12 +108,14 @@ export default function InHouse({ highlightId }) {
   const [guests,   setGuests]   = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [search,   setSearch]   = useState("");
-  const [selected, setSelected] = useState(null);  // reservation shown in modal
+  const [selected, setSelected] = useState(null);
   const [reqName,  setReqName]  = useState("");
   const [reqAmt,   setReqAmt]   = useState("");
   const [saving,   setSaving]   = useState(false);
-  const [extending,  setExtending]  = useState(false); // is saving extension
-  const [extDate,    setExtDate]    = useState("");     // new checkout date input
+  const [extending,  setExtending]  = useState(false);
+  const [extDate,    setExtDate]    = useState("");
+  const [refundInfo, setRefundInfo] = useState(null);
+  const [refundConfirmed, setRefundConfirmed] = useState(false);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -126,9 +128,7 @@ export default function InHouse({ highlightId }) {
       .select("*, rooms(type, floor)")
       .eq("status", "checked_in")
       .order("check_in");
-    // Filter out any that might have been checked out
-    const activeGuests = (data || []).filter(r => r.status === "checked_in");
-    setGuests(activeGuests);
+    setGuests((data || []).filter(r => r.status === "checked_in"));
     setLoading(false);
   };
 
@@ -137,9 +137,12 @@ export default function InHouse({ highlightId }) {
   };
 
   const calcTotal = (res) => {
-    const base  = parseFloat(res.total_amount || 0);
-    const extra = getCharges(res).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
-    return base + extra;
+    const base    = parseFloat(res.total_amount || 0);
+    // Only add in-house charges (from_reservation=false/undefined) — reservation charges already in base
+    const inHouse = getCharges(res)
+      .filter(c => !c.from_reservation)
+      .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    return base + inHouse;
   };
 
   const nightsStayed = (checkIn) => Math.max(1, Math.floor((new Date() - new Date(checkIn)) / 86400000));
@@ -151,10 +154,15 @@ export default function InHouse({ highlightId }) {
     const existing = getCharges(selected);
     const updated  = [...existing, { id: Date.now(), name: reqName.trim(), amount: parseFloat(reqAmt) }];
     await supabase.from("reservations").update({ additional_charges: JSON.stringify(updated) }).eq("id", selected.id);
-    await logActivity({ action: `Added charge to Room ${selected.room_number}: ${reqName.trim()}`, category: "charge", details: `Guest: ${selected.guest_name} | Amount: ₱${parseFloat(reqAmt).toLocaleString()}`, entity_type: "reservation", entity_id: selected.id });
+    await logActivity({
+      action: `Added charge to Room ${selected.room_number}: ${reqName.trim()}`,
+      category: "charge",
+      details: `Guest: ${selected.guest_name} | Amount: ₱${parseFloat(reqAmt).toLocaleString()}`,
+      entity_type: "reservation",
+      entity_id: selected.id,
+    });
     setSaving(false);
     setReqName(""); setReqAmt("");
-    // Refresh both list and selected
     const { data } = await supabase.from("reservations").select("*, rooms(type, floor)").eq("id", selected.id).single();
     setSelected(data);
     fetchGuests();
@@ -169,35 +177,87 @@ export default function InHouse({ highlightId }) {
     fetchGuests();
   };
 
-  const handleExtendStay = async () => {
+  /* ── Calculate refund/extra when date changes ── */
+  const calcPreview = (newDate) => {
+    if (!selected || !newDate || !selected.check_in) return null;
+    if (new Date(newDate) <= new Date(selected.check_in)) return null;
+
+    const originalNights = selected.check_out
+      ? Math.max(1, Math.ceil((new Date(selected.check_out) - new Date(selected.check_in)) / 86400000))
+      : null;
+
+    const newNights = Math.max(1, Math.ceil((new Date(newDate) - new Date(selected.check_in)) / 86400000));
+
+    // Strip reservation charges from total_amount to get pure room rate
+    // total_amount = (roomPrice * nights) + reservationCharges
+    // We need just (roomPrice * nights) for accurate per-night calculation
+    const reservationChargesTotal = getCharges(selected)
+      .filter(c => c.from_reservation)
+      .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    const pureRoomRate  = parseFloat(selected.total_amount || 0) - reservationChargesTotal;
+    const pricePerNight = originalNights ? pureRoomRate / originalNights : pureRoomRate;
+
+    const newTotal     = Math.round(newNights * pricePerNight * 100) / 100;
+    // roomRatePaid = pure room rate portion paid (excluding reservation charges)
+    const roomRatePaid = pureRoomRate;
+
+    const diff = roomRatePaid - newTotal; // positive = refund, negative = extra charge
+
+    return { newNights, originalNights, pricePerNight, newTotal, alreadyPaid: roomRatePaid, diff };
+  };
+
+  const handleExtDateChange = (val) => {
+    setExtDate(val);
+    setRefundConfirmed(false);
+    if (!val || !selected?.check_in) { setRefundInfo(null); return; }
+    setRefundInfo(calcPreview(val));
+  };
+
+  const handleSaveDateChange = async () => {
     if (!selected || !extDate) return;
-    if (selected.check_in && new Date(extDate) <= new Date(selected.check_in)) return;
+    const preview = calcPreview(extDate);
+    if (!preview) return;
+    // Require confirmation if refund is needed
+    if (preview.diff > 0 && !refundConfirmed) return;
+
     setExtending(true);
-    // Recalculate total based on new dates
-    const checkIn  = selected.check_in;
-    const checkOut = extDate;
-    const nights   = checkIn && checkOut
-      ? Math.max(1, Math.ceil((new Date(checkOut) - new Date(checkIn)) / 86400000))
-      : 1;
-    const pricePerNight = parseFloat(selected.total_amount || 0) /
-      Math.max(1, selected.check_out
-        ? Math.ceil((new Date(selected.check_out) - new Date(selected.check_in)) / 86400000)
-        : 1);
-    const newTotal = nights * pricePerNight;
 
-    await supabase.from("reservations")
-      .update({ check_out: extDate, total_amount: newTotal })
-      .eq("id", selected.id);
+    const updatePayload = {
+      check_out:    extDate,
+      total_amount: preview.newTotal,
+    };
+    // If shortening with refund, store original values and adjust amount_paid
+    if (preview.diff > 0) {
+      updatePayload.amount_paid       = preview.newTotal;
+      updatePayload.pay_later         = false;
+      updatePayload.refund_amount     = preview.diff;
+      // Only store original_checkout once (don't overwrite if already changed before)
+      if (!selected.original_checkout) {
+        updatePayload.original_checkout = selected.check_out;
+        updatePayload.original_amount   = preview.alreadyPaid;
+      }
+    }
 
-    // Refresh selected
+    await supabase.from("reservations").update(updatePayload).eq("id", selected.id);
+
+    await logActivity({
+      action:      `Changed check-out date: ${selected.guest_name}`,
+      category:    "edit",
+      details:     `Room ${selected.room_number} | New checkout: ${extDate} | New total: ₱${preview.newTotal.toLocaleString()}${preview.diff > 0 ? ` | Refund: ₱${preview.diff.toLocaleString()}` : ""}`,
+      entity_type: "reservation",
+      entity_id:   selected.id,
+    });
+
     const { data } = await supabase.from("reservations").select("*, rooms(type, floor)").eq("id", selected.id).single();
     setSelected(data);
     setExtDate("");
+    setRefundInfo(null);
+    setRefundConfirmed(false);
     setExtending(false);
     fetchGuests();
   };
 
-  const openModal = (res) => { setSelected(res); setReqName(""); setReqAmt(""); setExtDate(""); };
+  const openModal  = (res) => { setSelected(res); setReqName(""); setReqAmt(""); setExtDate(""); setRefundInfo(null); setRefundConfirmed(false); };
   const closeModal = () => setSelected(null);
 
   const filtered = guests.filter(g =>
@@ -218,11 +278,10 @@ export default function InHouse({ highlightId }) {
           </div>
         </div>
 
-        {/* Stats */}
         <div className="sc-3">
           {[
-            { lbl: "Currently Staying",  val: guests.length,          Icon: RiHotelBedLine,          bg: "#e8f5e9", color: "#07713c" },
-            { lbl: "Checking Out Today", val: checkingOutToday,       Icon: RiTimeLine,              bg: "#fff3e0", color: "#e65100" },
+            { lbl: "Currently Staying",  val: guests.length, Icon: RiHotelBedLine, bg: "#e8f5e9", color: "#07713c" },
+            { lbl: "Checking Out Today", val: checkingOutToday, Icon: RiTimeLine, bg: "#fff3e0", color: "#e65100" },
             { lbl: "Total Add. Charges", val: `₱${guests.reduce((s,g)=>s+getCharges(g).reduce((a,c)=>a+parseFloat(c.amount||0),0),0).toLocaleString()}`, Icon: RiMoneyDollarCircleLine, bg: "#f3e5f5", color: "#6a1b9a" },
           ].map(({ lbl, val, Icon, bg, color }) => (
             <div key={lbl} className="sc" style={{ background: bg }}>
@@ -232,12 +291,10 @@ export default function InHouse({ highlightId }) {
           ))}
         </div>
 
-        {/* Search */}
         <div className="fbar">
           <input className="finput" placeholder="Search guest name or room number..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
 
-        {/* Table */}
         <div className="ih-table">
           <div className="ih-thead">
             <div className="ih-th">Room</div>
@@ -347,7 +404,7 @@ export default function InHouse({ highlightId }) {
                         <div className="info-cell">
                           <div className="info-lbl"><RiCalendarLine size={10} />Check-Out</div>
                           <div className="info-val" style={{ color: isToday ? "#e65100" : "#222", fontWeight: isToday ? "700" : "600" }}>
-                            {selected.check_out}{isToday ? " ★" : ""}
+                            {selected.check_out || <span className="open-stay-badge">Open Stay</span>}{isToday ? " ★" : ""}
                           </div>
                         </div>
                       </div>
@@ -378,10 +435,10 @@ export default function InHouse({ highlightId }) {
                         </div>
                       </div>
 
-                      {/* Extend Stay */}
+                      {/* Change Check-Out Date */}
                       <div className="extend-box">
                         <div className="extend-title"><RiCalendar2Line size={13} />
-                          {selected.check_out ? "Extend Stay" : "Set Check-Out Date"}
+                          {selected.check_out ? "Change Check-Out Date" : "Set Check-Out Date"}
                         </div>
                         <div className="extend-row">
                           <input
@@ -389,16 +446,16 @@ export default function InHouse({ highlightId }) {
                             className="extend-input"
                             value={extDate}
                             min={selected.check_in || today}
-                            onChange={e => setExtDate(e.target.value)}
+                            onChange={e => handleExtDateChange(e.target.value)}
                             placeholder="Select new date"
                           />
                           <button
                             className="extend-btn"
-                            onClick={handleExtendStay}
-                            disabled={extending || !extDate}
+                            onClick={handleSaveDateChange}
+                            disabled={extending || !extDate || (refundInfo && refundInfo.diff > 0 && !refundConfirmed)}
                           >
-                            <RiCalendar2Line size={13} />
-                            {extending ? "Saving..." : selected.check_out ? "Extend" : "Set Date"}
+                            <RiSaveLine size={13} />
+                            {extending ? "Saving..." : "Save"}
                           </button>
                         </div>
                         {selected.check_out && (
@@ -425,9 +482,30 @@ export default function InHouse({ highlightId }) {
                     <div className="msec" style={{ flex: 1 }}>
                       <div className="msec-title"><RiAddCircleLine size={13} />Additional Charges</div>
 
-                      {charges.length > 0 ? (
-                        <div style={{ marginBottom: "10px", maxHeight: "220px", overflowY: "auto" }}>
-                          {charges.map(c => (
+                      {/* Reservation charges — read-only, already in total */}
+                      {charges.filter(c => c.from_reservation).length > 0 && (
+                        <div style={{ marginBottom: "8px" }}>
+                          <div style={{ fontSize: ".66rem", fontWeight: "700", color: "#aaa", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "5px" }}>
+                            From Reservation (included in rate)
+                          </div>
+                          {charges.filter(c => c.from_reservation).map(c => (
+                            <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 10px", background: "#f4f6f0", border: "1px solid #e4ebe4", borderRadius: "7px", marginBottom: "4px" }}>
+                              <span style={{ fontSize: ".82rem", color: "#777" }}>{c.name}</span>
+                              <span style={{ fontWeight: "600", color: "#888", fontSize: ".82rem" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* In-house charges — editable */}
+                      {charges.filter(c => !c.from_reservation).length > 0 ? (
+                        <div style={{ marginBottom: "10px", maxHeight: "180px", overflowY: "auto" }}>
+                          {charges.filter(c => !c.from_reservation).length > 0 && charges.filter(c => c.from_reservation).length > 0 && (
+                            <div style={{ fontSize: ".66rem", fontWeight: "700", color: "#07713c", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "5px" }}>
+                              Added During Stay
+                            </div>
+                          )}
+                          {charges.filter(c => !c.from_reservation).map(c => (
                             <div key={c.id} className="charge-row">
                               <span className="charge-name">{c.name}</span>
                               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -441,11 +519,10 @@ export default function InHouse({ highlightId }) {
                         </div>
                       ) : (
                         <div style={{ color: "#aaa", fontSize: ".82rem", marginBottom: "10px", fontStyle: "italic" }}>
-                          No additional charges yet.
+                          No in-house charges yet.
                         </div>
                       )}
 
-                      {/* Add charge */}
                       <div className="add-row">
                         <input className="add-fi" value={reqName} onChange={e => setReqName(e.target.value)}
                           placeholder="Description..." onKeyDown={e => e.key === "Enter" && handleAddCharge()} />
@@ -462,16 +539,90 @@ export default function InHouse({ highlightId }) {
                     <div className="total-bar">
                       <div>
                         <div className="total-lbl">Total Bill</div>
-                        {charges.length > 0 && (
-                          <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.6)", marginTop: "2px" }}>
-                            Room + {charges.length} extra charge{charges.length > 1 ? "s" : ""}
-                          </div>
-                        )}
+                        <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.6)", marginTop: "2px" }}>
+                          {(() => {
+                            const inHouseCount = charges.filter(c => !c.from_reservation).length;
+                            return inHouseCount > 0 ? `Room rate + ${inHouseCount} in-house charge${inHouseCount > 1 ? "s" : ""}` : "Room rate";
+                          })()}
+                        </div>
                       </div>
                       <span className="total-amt">₱{total.toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
+
+                {/* ── Full-width Refund / Extra Charge Panel ── */}
+                {refundInfo && extDate && (
+                  <div style={{ marginTop: 14 }}>
+                    {refundInfo.diff > 0 ? (
+                      /* REFUND REQUIRED */
+                      <div style={{ background: "#fff8e1", border: "1.5px solid #ffe082", borderRadius: 12, padding: "18px 20px" }}>
+                        <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#f57f17", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                          ⚠ Refund Required
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                          <div style={{ background: "#fffde7", borderRadius: 8, padding: "10px 14px" }}>
+                            <div style={{ fontSize: ".68rem", color: "#9a8a50", fontWeight: 700, textTransform: "uppercase", marginBottom: 3 }}>Original</div>
+                            <div style={{ fontSize: ".88rem", color: "#555" }}>{refundInfo.originalNights} night{refundInfo.originalNights !== 1 ? "s" : ""} × ₱{parseFloat(refundInfo.pricePerNight).toLocaleString()}</div>
+                            <div style={{ fontSize: "1rem", fontWeight: 700, color: "#333", marginTop: 2 }}>₱{parseFloat(refundInfo.alreadyPaid).toLocaleString()}</div>
+                          </div>
+                          <div style={{ background: "#fffde7", borderRadius: 8, padding: "10px 14px" }}>
+                            <div style={{ fontSize: ".68rem", color: "#9a8a50", fontWeight: 700, textTransform: "uppercase", marginBottom: 3 }}>New</div>
+                            <div style={{ fontSize: ".88rem", color: "#555" }}>{refundInfo.newNights} night{refundInfo.newNights !== 1 ? "s" : ""} × ₱{parseFloat(refundInfo.pricePerNight).toLocaleString()}</div>
+                            <div style={{ fontSize: "1rem", fontWeight: 700, color: "#333", marginTop: 2 }}>₱{parseFloat(refundInfo.newTotal).toLocaleString()}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fce4b0", borderRadius: 9, padding: "12px 16px", marginBottom: 12 }}>
+                          <span style={{ fontWeight: 700, color: "#c47000", fontSize: ".92rem" }}>Refund to Guest</span>
+                          <span style={{ fontWeight: 800, color: "#c62828", fontSize: "1.2rem" }}>₱{parseFloat(refundInfo.diff).toLocaleString()}</span>
+                        </div>
+                        {/* Confirmation checkbox */}
+                        <div
+                          onClick={() => setRefundConfirmed(r => !r)}
+                          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "11px 14px", borderRadius: 9, background: refundConfirmed ? "#ecfdf5" : "#fff", border: `1.5px solid ${refundConfirmed ? "#4caf50" : "#e0e0e0"}`, transition: "all .2s" }}>
+                          <div style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${refundConfirmed ? "#4caf50" : "#ccc"}`, background: refundConfirmed ? "#4caf50" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            {refundConfirmed && <span style={{ color: "#fff", fontSize: ".7rem", fontWeight: 700 }}>✓</span>}
+                          </div>
+                          <span style={{ fontSize: ".83rem", fontWeight: 600, color: refundConfirmed ? "#1b5e20" : "#555" }}>
+                            I confirm ₱{parseFloat(refundInfo.diff).toLocaleString()} has been / will be refunded to the guest
+                          </span>
+                        </div>
+                        {!refundConfirmed && (
+                          <div style={{ fontSize: ".75rem", color: "#f57f17", marginTop: 7, fontStyle: "italic" }}>
+                            ⚠ Tick the confirmation above before saving.
+                          </div>
+                        )}
+                      </div>
+                    ) : refundInfo.diff < 0 ? (
+                      /* EXTRA CHARGE */
+                      <div style={{ background: "#e8f5e9", border: "1.5px solid #a7f3d0", borderRadius: 12, padding: "18px 20px" }}>
+                        <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#07713c", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 12 }}>
+                          ✚ Additional Charge Required
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                          <div style={{ background: "#f0fdf4", borderRadius: 8, padding: "10px 14px" }}>
+                            <div style={{ fontSize: ".68rem", color: "#5a8a6a", fontWeight: 700, textTransform: "uppercase", marginBottom: 3 }}>Already Paid</div>
+                            <div style={{ fontSize: ".88rem", color: "#555" }}>{refundInfo.originalNights} night{refundInfo.originalNights !== 1 ? "s" : ""}</div>
+                            <div style={{ fontSize: "1rem", fontWeight: 700, color: "#333", marginTop: 2 }}>₱{parseFloat(refundInfo.alreadyPaid).toLocaleString()}</div>
+                          </div>
+                          <div style={{ background: "#f0fdf4", borderRadius: 8, padding: "10px 14px" }}>
+                            <div style={{ fontSize: ".68rem", color: "#5a8a6a", fontWeight: 700, textTransform: "uppercase", marginBottom: 3 }}>New Total</div>
+                            <div style={{ fontSize: ".88rem", color: "#555" }}>{refundInfo.newNights} night{refundInfo.newNights !== 1 ? "s" : ""}</div>
+                            <div style={{ fontSize: "1rem", fontWeight: 700, color: "#333", marginTop: 2 }}>₱{parseFloat(refundInfo.newTotal).toLocaleString()}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#c8f0d8", borderRadius: 9, padding: "12px 16px" }}>
+                          <span style={{ fontWeight: 700, color: "#07713c", fontSize: ".92rem" }}>Extra to Collect from Guest</span>
+                          <span style={{ fontWeight: 800, color: "#07713c", fontSize: "1.2rem" }}>₱{Math.abs(parseFloat(refundInfo.diff)).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ background: "#f4f6f0", borderRadius: 10, padding: "11px 16px", fontSize: ".83rem", color: "#555", textAlign: "center" }}>
+                        Same duration — no refund or extra charge needed.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="mfoot">
