@@ -6,6 +6,7 @@ import {
 } from "react-icons/ri";
 import supabase from "../supabaseClient";
 import { logActivity } from "../logger";
+import { printCheckInReceipt } from "../receiptPrinter ";
 
 /* ─── shared inline styles (mirrors CheckOut) ─── */
 const inputStyle = {
@@ -109,7 +110,7 @@ function AddChargeBlue({ onAdd }) {
   );
 }
 
-export default function CheckIn() {
+export default function CheckIn({ user }) {
   const [reservations,   setReservations]   = useState([]);
   const [rooms,          setRooms]          = useState([]);
   const [loading,        setLoading]        = useState(true);
@@ -195,10 +196,35 @@ export default function CheckIn() {
       entity_id:   checkedId,
     });
 
+    // Capture before state clears
+    const ciReceipt = {
+      guestName:    selected.guest_name,
+      roomNumber:   selected.room_number,
+      checkInDate:  selected.check_in,
+      checkOutDate: selected.check_out || null,
+      nights:       selected.check_out
+        ? Math.max(0, (new Date(selected.check_out) - new Date(selected.check_in)) / 86400000)
+        : null,
+      guestPhone:   selected.guest_phone || "",
+      guestNotes:   selected.notes || "",
+      roomCharge:   parseFloat(selected.total_amount || 0),
+      resCharges:   (() => { try { return JSON.parse(selected.additional_charges || "[]").filter(c => c.from_reservation); } catch { return []; } })(),
+      walkInCharges: [],
+      grandTotal:   parseFloat(selected.total_amount || 0),
+      amountPaid:   paidAmt,
+      payMethod:    payLater ? "pay_at_checkout" : paymentMethod,
+    };
+
     setReservations(prev => prev.filter(r => r.id !== checkedId));
     setProcessing(false);
     setShowModal(false);
     setSelected(null);
+
+    printCheckInReceipt(
+      ciReceipt,
+      { name: user?.full_name || user?.email || "Staff", role: user?.role || "" }
+    );
+
     setTimeout(() => fetchData(), 500);
   };
 
@@ -266,9 +292,34 @@ export default function CheckIn() {
       entity_type: "reservation",
     });
 
+    // Capture walk-in receipt data before state resets
+    const wiReceipt = {
+      guestName:    walkIn.guest_name,
+      roomNumber:   room?.room_number,
+      checkInDate:  walkIn.check_in,
+      checkOutDate: walkIn.check_out || null,
+      nights:       walkIn.check_out
+        ? Math.max(0, (new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000)
+        : null,
+      guestPhone:   walkIn.guest_phone || "",
+      guestNotes:   walkIn.notes || "",
+      roomCharge:   total,
+      resCharges:   [],
+      walkInCharges: walkIn.additional_charges || [],
+      grandTotal:   totalWithCharges,
+      amountPaid:   walkInPayLater ? 0 : (amtReceived > 0 ? Math.min(amtReceived, totalWithCharges) : totalWithCharges),
+      payMethod:    walkInPayLater ? "pay_at_checkout" : "cash",
+    };
+
     setSavingWalkIn(false);
     setShowWalkIn(false);
     setWalkIn({ guest_name: "", guest_email: "", guest_phone: "", room_id: "", check_in: today, check_out: "", notes: "", additional_charges: [] });
+
+    printCheckInReceipt(
+      wiReceipt,
+      { name: user?.full_name || user?.email || "Staff", role: user?.role || "" }
+    );
+
     fetchData();
   };
 

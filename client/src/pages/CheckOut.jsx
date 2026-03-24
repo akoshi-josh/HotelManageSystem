@@ -7,6 +7,7 @@ import {
 } from "react-icons/ri";
 import supabase from "../supabaseClient";
 import { logActivity } from "../logger";
+import { printCheckOutReceipt } from "../receiptPrinter ";
 
 const inputStyle = { width: "100%", padding: "10px 14px", border: "2px solid #e8e8e8", borderRadius: "8px", fontSize: "0.9rem", outline: "none", fontFamily: "Arial,sans-serif", boxSizing: "border-box", background: "white", transition: "border 0.2s" };
 const labelStyle = { display: "block", fontSize: "0.8rem", fontWeight: "700", color: "#555", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.4px" };
@@ -80,7 +81,7 @@ function InspectionWarningModal({ res, onRequestInspection, onProceed, onCancel 
   );
 }
 
-export default function CheckOut({ highlightRoom }) {
+export default function CheckOut({ highlightRoom, user }) {
   const [reservations,   setReservations]   = useState([]);
   const [loading,        setLoading]        = useState(true);
   const [search,         setSearch]         = useState("");
@@ -306,7 +307,30 @@ export default function CheckOut({ highlightRoom }) {
       entity_type: "reservation",
       entity_id:   snap.id,
     });
+
+    // ── Auto-print receipt after checkout ──
+    printCheckOutReceipt(
+      {
+        guestName:      snap.guestName,
+        roomNumber:     snap.roomNumber,
+        checkInDate:    selected?.check_in  || "",
+        checkOutDate:   selected?.check_out || new Date().toISOString().split("T")[0],
+        roomCharge:     snap.basTotal,
+        resCharges:     snap.addCharges.filter(c => c.from_reservation),
+        inHouseCharges: snap.addCharges.filter(c => !c.from_reservation),
+        inspCharges:    snap.inspCharges,
+        extraAmt:       snap.extraAmt,
+        extraNote:      snap.extraNoteVal,
+        alreadyPaid:    snap.alreadyPaid,
+        grandTotal:     snapGrandTotal,
+        payMethod:      snap.payMethod,
+        guestNotes:     selected?.notes || "",
+      },
+      { name: user?.full_name || user?.email || "Staff", role: user?.role || "" }
+    );
   };
+
+
 
   const filtered = reservations.filter(r =>
     r.guest_name.toLowerCase().includes(search.toLowerCase()) ||
