@@ -161,20 +161,20 @@ app.post('/api/send-reservation-email', async (req, res) => {
       <div class="detail-box">
         <div class="detail-row">
           <span class="detail-label">Room</span>
-          <span class="detail-value">Room ${room_number}${room_type ? ' &mdash; ' + room_type : ''}</span>
+          <span class="detail-value">Room:  ${room_number}${room_type ? ' &mdash; ' + room_type : ''}</span>
         </div>
         <div class="detail-row">
-          <span class="detail-label">Check-In</span>
+          <span class="detail-label">Check-In: </span>
           <span class="detail-value">${check_in}</span>
         </div>
         <div class="detail-row">
-          <span class="detail-label">Check-Out</span>
+          <span class="detail-label">Check-Out: </span>
           <span class="detail-value">
             ${isOpenStay ? '<span class="open-badge">Open Stay</span>' : check_out}
           </span>
         </div>
         <div class="detail-row">
-          <span class="detail-label">Duration</span>
+          <span class="detail-label">Duration: </span>
           <span class="detail-value">
             ${isOpenStay ? 'Open-ended stay' : (nights + ' night' + (nights !== 1 ? 's' : ''))}
           </span>
@@ -182,7 +182,7 @@ app.post('/api/send-reservation-email', async (req, res) => {
       </div>
 
       <div class="total-bar">
-        <span class="total-label">${isOpenStay ? 'Rate per Night' : 'Total Amount'}</span>
+        <span class="total-label">${isOpenStay ? 'Rate per Night' : 'Total Amount: '}</span>
         <span class="total-value">&#8369;${formattedTotal}${isOpenStay ? ' / night' : ''}</span>
       </div>
 

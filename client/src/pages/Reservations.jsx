@@ -25,7 +25,7 @@ function AddChargeInline({ onAdd }) {
   return (
     <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
       <input value={name} onChange={e => setName(e.target.value)}
-        placeholder="e.g. Room service, Extra bed..."
+        placeholder="e.g. Room service..."
         style={{ flex: 2, padding: "9px 12px", border: "1.5px dashed #c8e6c9", borderRadius: "8px", fontSize: "0.85rem", outline: "none", fontFamily: "Arial,sans-serif", color: "#333" }}
         onKeyDown={e => e.key === "Enter" && handle()} />
       <input type="number" value={amount} onChange={e => setAmount(e.target.value)}

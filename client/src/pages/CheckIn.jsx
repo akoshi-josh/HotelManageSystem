@@ -633,9 +633,6 @@ export default function CheckIn({ user }) {
           </div>
         )}
 
-        {/* ════════════════════
-            WALK-IN MODAL
-            ════════════════════ */}
         {showWalkIn && (
           <div className="mo-wi" onClick={() => setShowWalkIn(false)}>
             <div className="mb-wi" onClick={e => e.stopPropagation()}>
