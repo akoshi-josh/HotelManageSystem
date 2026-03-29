@@ -4,6 +4,7 @@ import {
   RiPencilLine, RiUserAddLine,
 } from "react-icons/ri";
 import supabase from "../supabaseClient";
+import StaffModal from "../components/StaffModal";
 
 const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -43,6 +44,7 @@ const CSS = `
 .ba-edit { border-color:#fde68a; color:#92400e; background:#fffbeb; }
 .ba-edit:hover { background:#fef3c7; }
 .empty { padding:48px; text-align:center; color:#9aaa9a; font-size:.88rem; }
+/* MODAL */
 .mo { position:fixed; inset:0; z-index:999; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.48); backdrop-filter:blur(2px); padding:16px; }
 .mb { background:#f4f6f0; border-radius:20px; width:100%; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.22); }
 .mh { padding:22px 28px; flex-shrink:0; display:flex; justify-content:space-between; align-items:center; border-radius:20px 20px 0 0; background:linear-gradient(135deg,#07713c,#0a9150); }
@@ -73,6 +75,7 @@ const ROLE_PILL = {
   staff:        { bg: "#e3f2fd", color: "#1565c0" },
   receptionist: { bg: "#f3e5f5", color: "#6a1b9a" },
   maintenance:  { bg: "#fff3e0", color: "#e65100" },
+  restaurant:   { bg: "#fdf2f8", color: "#9c27b0" },  // ← NEW
 };
 
 export default function Staff() {
@@ -242,67 +245,17 @@ export default function Staff() {
         </div>
       </div>
 
-      {showModal && (
-        <div className="mo" onClick={() => setShowModal(false)}>
-          <div className="mb" style={{ maxWidth: "460px" }} onClick={e => e.stopPropagation()}>
-            <div className="mh">
-              <div>
-                <p className="mh-title">{editUser ? "Edit Staff Account" : "Add New Staff"}</p>
-                <p className="mh-sub">{editUser ? "Update staff details" : "Create a new staff account"}</p>
-              </div>
-              <button className="mx" onClick={() => setShowModal(false)}>×</button>
-            </div>
-            <div className="mbody">
-              {error   && <div className="alert-err">✕ {error}</div>}
-              {success && <div className="alert-ok">✓ {success}</div>}
-              <div className="sc2">
-                <div className="sc2-title">Account Details</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                  <div>
-                    <label className="flabel">Full Name</label>
-                    <input className="fi" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} placeholder="e.g. Juan Dela Cruz" />
-                  </div>
-                  <div>
-                    <label className="flabel">Email Address</label>
-                    <input type="email" className="fi" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="e.g. juan@hotel.com" disabled={!!editUser} style={editUser ? { background: "#f5f8f5", color: "#9aaa9a" } : {}} />
-                  </div>
-                  {!editUser && (
-                    <div>
-                      <label className="flabel">Password</label>
-                      <input type="password" className="fi" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Min. 6 characters" />
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="sc2">
-                <div className="sc2-title">Role & Status</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                  <div>
-                    <label className="flabel">Role</label>
-                    <select className="fi" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={{ cursor: "pointer" }}>
-                      <option value="staff">Staff</option>
-                      <option value="receptionist">Receptionist</option>
-                      <option value="maintenance">Maintenance</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="flabel">Status</label>
-                    <select className="fi" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={{ cursor: "pointer" }}>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="mfoot">
-              <button className="btn-cancel" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn-confirm" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : editUser ? "Save Changes" : "Create Account"}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <StaffModal
+        showModal={showModal}
+        onClose={() => setShowModal(false)}
+        editUser={editUser}
+        form={form}
+        setForm={setForm}
+        error={error}
+        success={success}
+        saving={saving}
+        onSave={handleSave}
+      />
     </>
   );
 }

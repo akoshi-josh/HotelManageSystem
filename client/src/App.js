@@ -2,16 +2,17 @@ import React, { useState, useEffect } from "react";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import supabase from "./supabaseClient";
+import Restaurant from "./pages/Restaurant";
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if there's an active session
+    
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
-        // Fetch profile from users table
+       
         const { data: profile } = await supabase
           .from("users")
           .select("*")
@@ -21,11 +22,11 @@ function App() {
         if (profile) {
           setUser(profile);
         } else {
-          // No profile found, sign out
+          
           await supabase.auth.signOut();
         }
       }
-      // Always stop loading regardless of result
+      
       setLoading(false);
     });
   }, []);

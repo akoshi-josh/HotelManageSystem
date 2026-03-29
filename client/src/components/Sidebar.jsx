@@ -3,7 +3,8 @@ import {
   RiDashboardLine, RiHotelBedLine, RiCalendarLine,
   RiLoginBoxLine, RiLogoutBoxLine, RiGroupLine,
   RiUserLine, RiSettings3Line, RiHotelLine,
-  RiLogoutCircleLine, RiToolsLine, RiPriceTag3Line, RiHistoryLine,
+  RiLogoutCircleLine, RiToolsLine, RiPriceTag3Line,
+  RiHistoryLine, RiRestaurantLine,
 } from "react-icons/ri";
 
 const CSS = `
@@ -107,37 +108,39 @@ const CSS = `
 `;
 
 const ROLE_BADGE_CFG = {
-  admin:        { bg: "rgba(255,193,7,0.2)",  color: "#ffd54f",  label: "Admin"        },
-  staff:        { bg: "rgba(92,184,92,0.2)",  color: "#a5d6a7",  label: "Staff"        },
-  receptionist: { bg: "rgba(144,202,249,0.2)",color: "#90caf9",  label: "Receptionist" },
-  maintenance:  { bg: "rgba(255,183,77,0.2)", color: "#ffcc80",  label: "Maintenance"  },
+  admin:        { bg: "rgba(255,193,7,0.2)",   color: "#ffd54f",  label: "Admin"        },
+  staff:        { bg: "rgba(92,184,92,0.2)",   color: "#a5d6a7",  label: "Staff"        },
+  receptionist: { bg: "rgba(144,202,249,0.2)", color: "#90caf9",  label: "Receptionist" },
+  maintenance:  { bg: "rgba(255,183,77,0.2)",  color: "#ffcc80",  label: "Maintenance"  },
+  restaurant:   { bg: "rgba(206,147,216,0.2)", color: "#ce93d8",  label: "Restaurant"   }, // ← NEW
 };
 
-// Define nav groups with role access
 const NAV = [
   { section: "Menu" },
-  { label: "Dashboard",    Icon: RiDashboardLine,  key: "Dashboard",    roles: ["admin","staff","receptionist"] },
-  { label: "Rooms",        Icon: RiHotelBedLine,   key: "Rooms",        roles: ["admin","staff","receptionist"] },
-  { label: "Reservations", Icon: RiCalendarLine,   key: "Reservations", roles: ["admin","staff","receptionist"] },
-  { label: "Check-In",     Icon: RiLoginBoxLine,   key: "Check-In",     roles: ["admin","staff","receptionist"] },
-  { label: "In-House",     Icon: RiHotelBedLine,   key: "In-House",     roles: ["admin","staff","receptionist"] },
-  { label: "Check-Out",    Icon: RiLogoutBoxLine,  key: "Check-Out",    roles: ["admin","staff","receptionist"] },
-  { label: "Guests",       Icon: RiGroupLine,      key: "Guests",       roles: ["admin","staff","receptionist"] },
+  { label: "Dashboard",    Icon: RiDashboardLine,   key: "Dashboard",    roles: ["admin","staff","receptionist"] },
+  { label: "Rooms",        Icon: RiHotelBedLine,    key: "Rooms",        roles: ["admin","staff","receptionist"] },
+  { label: "Reservations", Icon: RiCalendarLine,    key: "Reservations", roles: ["admin","staff","receptionist"] },
+  { label: "Check-In",     Icon: RiLoginBoxLine,    key: "Check-In",     roles: ["admin","staff","receptionist"] },
+  { label: "In-House",     Icon: RiHotelBedLine,    key: "In-House",     roles: ["admin","staff","receptionist"] },
+  { label: "Check-Out",    Icon: RiLogoutBoxLine,   key: "Check-Out",    roles: ["admin","staff","receptionist"] },
+  { label: "Guests",       Icon: RiGroupLine,       key: "Guests",       roles: ["admin","staff","receptionist"] },
   { section: "Maintenance" },
-  { label: "Maintenance",  Icon: RiToolsLine,      key: "Maintenance",  roles: ["admin","maintenance"] },
+  { label: "Maintenance",  Icon: RiToolsLine,       key: "Maintenance",  roles: ["admin","maintenance"] },
+  { section: "Restaurant" },                                                                  // ← NEW section
+  { label: "Restaurant",   Icon: RiRestaurantLine,  key: "Restaurant",   roles: ["admin","restaurant"] }, // ← NEW
   { section: "Admin" },
-  { label: "Log",          Icon: RiHistoryLine,    key: "Log",          roles: ["admin"] },
-  { label: "Staff",        Icon: RiUserLine,       key: "Staff",        roles: ["admin"] },
-  { label: "Pricing",      Icon: RiPriceTag3Line,  key: "Pricing",      roles: ["admin"] },
-  { label: "Settings",     Icon: RiSettings3Line,  key: "Settings",     roles: ["admin","staff","receptionist"] },
+  { label: "Log",          Icon: RiHistoryLine,     key: "Log",          roles: ["admin"] },
+  { label: "Staff",        Icon: RiUserLine,        key: "Staff",        roles: ["admin"] },
+  { label: "Pricing",      Icon: RiPriceTag3Line,   key: "Pricing",      roles: ["admin"] },
+  { label: "Settings",     Icon: RiSettings3Line,   key: "Settings",     roles: ["admin","staff","receptionist","restaurant"] },
 ];
 
 export default function Sidebar({ activeNav, setActiveNav, onLogout, userRole, userEmail, userName }) {
-  const initials  = (userName || userEmail || "U").slice(0, 2).toUpperCase();
-  const badge     = ROLE_BADGE_CFG[userRole] || ROLE_BADGE_CFG.staff;
+  const initials   = (userName || userEmail || "U").slice(0, 2).toUpperCase();
+  const badge      = ROLE_BADGE_CFG[userRole] || ROLE_BADGE_CFG.staff;
   const visibleNav = NAV.filter(item => item.section || (item.roles && item.roles.includes(userRole)));
 
-  // Hide section headers if no items follow them for this role
+  // Hide section headers that have no items following them for this role
   const filtered = visibleNav.filter((item, idx) => {
     if (!item.section) return true;
     const next = visibleNav[idx + 1];

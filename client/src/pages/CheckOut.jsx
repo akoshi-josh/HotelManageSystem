@@ -3,14 +3,18 @@ import {
   RiUserLine, RiHotelBedLine, RiCalendarLine, RiLogoutBoxLine,
   RiErrorWarningLine, RiTimeLine, RiMoneyDollarCircleLine,
   RiStickyNoteLine, RiCheckboxCircleLine, RiSearchLine, RiAlertLine,
-  RiToolsLine, RiCheckDoubleLine, RiPencilLine, RiCheckLine,
+  RiToolsLine, RiCheckDoubleLine,
 } from "react-icons/ri";
 import supabase from "../supabaseClient";
 import { logActivity } from "../logger";
 import { printCheckOutReceipt } from "../receiptPrinter ";
+import CheckOutModal from "../components/checkOutModal";
 
-const inputStyle = { width: "100%", padding: "10px 14px", border: "2px solid #e8e8e8", borderRadius: "8px", fontSize: "0.9rem", outline: "none", fontFamily: "Arial,sans-serif", boxSizing: "border-box", background: "white", transition: "border 0.2s" };
-const labelStyle = { display: "block", fontSize: "0.8rem", fontWeight: "700", color: "#555", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.4px" };
+const inputStyle = {
+  width: "100%", padding: "10px 14px", border: "2px solid #e8e8e8",
+  borderRadius: "8px", fontSize: "0.9rem", outline: "none",
+  fontFamily: "Arial,sans-serif", boxSizing: "border-box", background: "white", transition: "border 0.2s",
+};
 
 function InspectionWarningModal({ res, onRequestInspection, onProceed, onCancel }) {
   const status       = res.inspection_status;
@@ -82,34 +86,32 @@ function InspectionWarningModal({ res, onRequestInspection, onProceed, onCancel 
 }
 
 export default function CheckOut({ highlightRoom, user }) {
-  const [reservations,   setReservations]   = useState([]);
-  const [loading,        setLoading]        = useState(true);
-  const [search,         setSearch]         = useState("");
-  const [showModal,      setShowModal]      = useState(false);
-  const [selected,       setSelected]       = useState(null);
-  const [processing,     setProcessing]     = useState(false);
-  const [paymentMethod,  setPaymentMethod]  = useState("cash");
-  const [extraCharges,   setExtraCharges]   = useState("");
-  const [extraNote,      setExtraNote]      = useState("");
-  const [amountReceived, setAmountReceived] = useState("");
-  const [fullyPaid,      setFullyPaid]      = useState(false);
-  const [successMsg,     setSuccessMsg]     = useState("");
-  const [requesting,     setRequesting]     = useState(null);
-  const [editingCharge,  setEditingCharge]  = useState(null);
-  const [highlighted,    setHighlighted]    = useState(null);
+  const [reservations,  setReservations]  = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [search,        setSearch]        = useState("");
+  const [showModal,     setShowModal]     = useState(false);
+  const [selected,      setSelected]      = useState(null);
+  const [processing,    setProcessing]    = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [extraCharges,  setExtraCharges]  = useState("");
+  const [extraNote,     setExtraNote]     = useState("");
+  const [amountReceived,setAmountReceived]= useState("");
+  const [fullyPaid,     setFullyPaid]     = useState(false);
+  const [successMsg,    setSuccessMsg]    = useState("");
+  const [requesting,    setRequesting]    = useState(null);
+  const [editingCharge, setEditingCharge] = useState(null);
+  const [highlighted,   setHighlighted]   = useState(null);
   const [showInspectionWarning, setShowInspectionWarning] = useState(false);
   const [pendingCheckoutRes,    setPendingCheckoutRes]    = useState(null);
 
   const today = new Date().toISOString().split("T")[0];
 
-  // ── Initial load only (no loading spinner on polls)
   useEffect(() => {
     fetchData(false);
     const poll = setInterval(() => fetchData(true), 5000);
     return () => clearInterval(poll);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); 
 
-  // ── Realtime: inspection status updates instantly
   useEffect(() => {
     const channel = supabase
       .channel("checkout-live")
@@ -130,7 +132,7 @@ export default function CheckOut({ highlightRoom, user }) {
       )
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); 
 
   useEffect(() => {
     if (highlightRoom?.room_number) {
@@ -139,7 +141,6 @@ export default function CheckOut({ highlightRoom, user }) {
     }
   }, [highlightRoom]);
 
-  // ── silent=true: no loading spinner, only update state if data changed
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true);
     const { data } = await supabase
@@ -161,7 +162,8 @@ export default function CheckOut({ highlightRoom, user }) {
     if (!silent) setLoading(false);
   };
 
-  const getInspectionCharges = (res) => { try { return JSON.parse(res?.inspection_charges || "[]"); } catch { return []; } };
+  const getInspectionCharges  = (res) => { try { return JSON.parse(res?.inspection_charges  || "[]"); } catch { return []; } };
+  const getAdditionalCharges  = (res) => { try { return JSON.parse(res?.additional_charges  || "[]"); } catch { return []; } };
 
   const saveChargePrice = async (res, idx, newAmount) => {
     const charges = getInspectionCharges(res);
@@ -214,9 +216,7 @@ export default function CheckOut({ highlightRoom, user }) {
   };
 
   const requestInspectionFromWarning = async () => {
-    if (pendingCheckoutRes) {
-      await handleRequestInspection(pendingCheckoutRes);
-    }
+    if (pendingCheckoutRes) await handleRequestInspection(pendingCheckoutRes);
     setShowInspectionWarning(false);
     setPendingCheckoutRes(null);
   };
@@ -230,42 +230,23 @@ export default function CheckOut({ highlightRoom, user }) {
     setShowModal(true);
   };
 
-  const getAdditionalCharges = (res) => { try { return JSON.parse(res?.additional_charges || "[]"); } catch { return []; } };
-  // Walk-in guests: additional_charges = charges added AT check-in (already in total_amount? No — walk-in saves them separately)
-  // For checkout, additional_charges = in-house charges added DURING stay (from InHouse page)
-  // These are separate from total_amount and need to be added to the bill
-
-  const basTotal        = parseFloat(selected?.total_amount || 0);
-  const alreadyPaid     = parseFloat(selected?.amount_paid  || 0);
-  const extra           = parseFloat(extraCharges           || 0);
-  // additional_charges contains both reservation charges (from_reservation=true, already in total_amount)
-  // and in-house charges (from_reservation=false/undefined, need to be added to bill)
-  const additionalTotal = selected
-    ? getAdditionalCharges(selected).filter(c => !c.from_reservation).reduce((s, c) => s + parseFloat(c.amount || 0), 0)
-    : 0;
-  const inspectionTotal = selected ? getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0) : 0;
-  const grandTotal      = basTotal + extra + additionalTotal + inspectionTotal;
-  const balanceDue      = Math.max(0, grandTotal - alreadyPaid);
-  const change          = fullyPaid ? 0 : Math.max(0, parseFloat(amountReceived || 0) - balanceDue);
-
   const handleCheckOut = async () => {
     if (!selected) return;
     setProcessing(true);
 
     const snap = {
-      id:               selected.id,
-      guestName:        selected.guest_name,
-      roomNumber:       selected.room_number,
-      roomId:           selected.room_id,
-      basTotal:         parseFloat(selected.total_amount || 0),
-      alreadyPaid:      parseFloat(selected.amount_paid  || 0),
-      extraAmt:         parseFloat(extraCharges || 0),
-      extraNoteVal:     extraNote,
-      payMethod:        paymentMethod,
-      addCharges:       getAdditionalCharges(selected),
-      inspCharges:      getInspectionCharges(selected),
+      id:           selected.id,
+      guestName:    selected.guest_name,
+      roomNumber:   selected.room_number,
+      roomId:       selected.room_id,
+      basTotal:     parseFloat(selected.total_amount || 0),
+      alreadyPaid:  parseFloat(selected.amount_paid  || 0),
+      extraAmt:     parseFloat(extraCharges || 0),
+      extraNoteVal: extraNote,
+      payMethod:    paymentMethod,
+      addCharges:   getAdditionalCharges(selected),
+      inspCharges:  getInspectionCharges(selected),
     };
-    // snapAddTotal = in-house charges only (from_reservation=false), reservation charges already in basTotal
     const snapAddTotal   = snap.addCharges.filter(c => !c.from_reservation).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     const snapInspTotal  = snap.inspCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     const snapGrandTotal = snap.basTotal + snap.extraAmt + snapAddTotal + snapInspTotal;
@@ -308,7 +289,6 @@ export default function CheckOut({ highlightRoom, user }) {
       entity_id:   snap.id,
     });
 
-    // ── Auto-print receipt after checkout ──
     printCheckOutReceipt(
       {
         guestName:      snap.guestName,
@@ -330,13 +310,10 @@ export default function CheckOut({ highlightRoom, user }) {
     );
   };
 
-
-
-  const filtered = reservations.filter(r =>
+  const filtered     = reservations.filter(r =>
     r.guest_name.toLowerCase().includes(search.toLowerCase()) ||
     (r.room_number || "").includes(search)
   );
-
   const overdueList  = filtered.filter(r => r.check_out < today);
   const todayList    = filtered.filter(r => r.check_out === today);
   const upcomingList = filtered.filter(r => r.check_out > today);
@@ -344,14 +321,15 @@ export default function CheckOut({ highlightRoom, user }) {
   const nightsStayed = (checkIn)  => Math.max(1, Math.floor((new Date() - new Date(checkIn)) / 86400000));
   const nightsLeft   = (checkOut) => Math.max(0, Math.ceil((new Date(checkOut) - new Date()) / 86400000));
 
-  /* ── TABLE ROW ── */
   const GuestRow = ({ res }) => {
     const nights    = Math.max(0, (new Date(res.check_out) - new Date(res.check_in)) / 86400000);
     const isOverdue = res.check_out < today;
     return (
-      <tr style={{ borderBottom: "1px solid #f5f5f5", background: highlighted === res.room_number ? "#fff8e1" : "white", transition: "background 0.5s", outline: highlighted === res.room_number ? "2px solid #f59e0b" : "none" }}
+      <tr
+        style={{ borderBottom: "1px solid #f5f5f5", background: highlighted === res.room_number ? "#fff8e1" : "white", transition: "background 0.5s", outline: highlighted === res.room_number ? "2px solid #f59e0b" : "none" }}
         onMouseOver={e => { if (highlighted !== res.room_number) e.currentTarget.style.background = "#fafafa"; }}
-        onMouseOut={e => { if (highlighted !== res.room_number) e.currentTarget.style.background = "white"; }}>
+        onMouseOut={e => { if (highlighted !== res.room_number) e.currentTarget.style.background = "white"; }}
+      >
         <td style={{ padding: "14px 16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "linear-gradient(135deg,#e65100,#ff9800)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: "700", fontSize: "0.85rem", flexShrink: 0 }}>
@@ -388,11 +366,13 @@ export default function CheckOut({ highlightRoom, user }) {
                 <RiAlertLine size={12} /> Damage Found
               </span>
             ) : (
-              <button onClick={() => handleRequestInspection(res)} disabled={requesting === res.id} style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "8px 12px", background: "#f3e5f5", color: "#6a1b9a", border: "1.5px solid #ce93d8", borderRadius: "8px", cursor: "pointer", fontSize: "0.78rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
+              <button onClick={() => handleRequestInspection(res)} disabled={requesting === res.id}
+                style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "8px 12px", background: "#f3e5f5", color: "#6a1b9a", border: "1.5px solid #ce93d8", borderRadius: "8px", cursor: "pointer", fontSize: "0.78rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
                 <RiSearchLine size={13} />{requesting === res.id ? "..." : "Inspect"}
               </button>
             )}
-            <button onClick={() => handleCheckOutClick(res)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#e65100", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.85rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
+            <button onClick={() => handleCheckOutClick(res)}
+              style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#e65100", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.85rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
               <RiLogoutBoxLine size={14} /> Check Out
             </button>
           </div>
@@ -422,7 +402,6 @@ export default function CheckOut({ highlightRoom, user }) {
     </div>
   );
 
-  /* ── VERTICAL CARD (still staying) ── */
   const StayingCard = ({ res }) => {
     const stayed   = nightsStayed(res.check_in);
     const left     = nightsLeft(res.check_out);
@@ -483,11 +462,13 @@ export default function CheckOut({ highlightRoom, user }) {
                   <RiAlertLine size={12} /> Damage Found
                 </span>
               ) : (
-                <button onClick={() => handleRequestInspection(res)} disabled={requesting === res.id} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 14px", background: "#f3e5f5", color: "#6a1b9a", border: "1.5px solid #ce93d8", borderRadius: "8px", cursor: "pointer", fontSize: "0.82rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
+                <button onClick={() => handleRequestInspection(res)} disabled={requesting === res.id}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 14px", background: "#f3e5f5", color: "#6a1b9a", border: "1.5px solid #ce93d8", borderRadius: "8px", cursor: "pointer", fontSize: "0.82rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
                   <RiSearchLine size={13} />{requesting === res.id ? "..." : "Request Inspection"}
                 </button>
               )}
-              <button onClick={() => handleCheckOutClick(res)} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#1565c0", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.82rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
+              <button onClick={() => handleCheckOutClick(res)}
+                style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "8px 16px", background: "#1565c0", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "0.82rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}>
                 <RiLogoutBoxLine size={13} /> Check Out
               </button>
             </div>
@@ -504,7 +485,6 @@ export default function CheckOut({ highlightRoom, user }) {
         <p style={{ margin: "4px 0 0", color: "#888", fontSize: "0.9rem" }}>Process guest departures and collect final payments</p>
       </div>
 
-      {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
         {[
           { label: "Currently Staying",  value: reservations.length,                                     Icon: RiUserLine,         bg: "#e8f5e9", color: "#1b5e20" },
@@ -522,7 +502,6 @@ export default function CheckOut({ highlightRoom, user }) {
         ))}
       </div>
 
-      {/* Search */}
       <div style={{ background: "white", borderRadius: "14px", padding: "16px 24px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", marginBottom: "20px" }}>
         <input type="text" placeholder="🔍  Search guest name or room number..."
           value={search} onChange={e => setSearch(e.target.value)} style={inputStyle}
@@ -558,7 +537,6 @@ export default function CheckOut({ highlightRoom, user }) {
         </>
       )}
 
-      {/* INSPECTION WARNING MODAL */}
       {showInspectionWarning && pendingCheckoutRes && (
         <InspectionWarningModal
           res={pendingCheckoutRes}
@@ -568,311 +546,23 @@ export default function CheckOut({ highlightRoom, user }) {
         />
       )}
 
-      {/* CHECK-OUT MODAL */}
       {showModal && selected && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px" }}>
-          <div style={{ background: "#f8f9fa", borderRadius: "20px", width: "520px", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", fontFamily: "Arial,sans-serif" }}>
-            <div style={{ background: "linear-gradient(135deg,#bf360c,#e65100)", borderRadius: "20px 20px 0 0", padding: "24px 30px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <h3 style={{ margin: 0, color: "white", fontSize: "1.2rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px" }}>
-                  <RiLogoutBoxLine size={20} /> Process Check-Out
-                </h3>
-                <p style={{ margin: "4px 0 0", color: "rgba(255,255,255,0.7)", fontSize: "0.82rem" }}>Review charges and collect final payment</p>
-              </div>
-              <button onClick={() => setShowModal(false)} style={{ background: "rgba(255,255,255,0.15)", border: "none", width: "34px", height: "34px", borderRadius: "50%", cursor: "pointer", color: "white", fontSize: "1.1rem" }}>×</button>
-            </div>
-
-            <div style={{ padding: "24px 30px" }}>
-              {successMsg && (
-                <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", color: "#1b5e20", padding: "12px 16px", borderRadius: "8px", marginBottom: "16px", fontSize: "0.88rem", fontWeight: "600" }}>
-                  ✅ {successMsg}
-                </div>
-              )}
-
-              {/* No inspection banner */}
-              {!selected.inspection_status && (
-                <div style={{ background: "#fff8e1", border: "1.5px solid #ffe082", borderRadius: "10px", padding: "10px 14px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px", fontSize: "0.83rem", color: "#f57f17", fontWeight: "600" }}>
-                  <RiAlertLine size={15} color="#f57f17" />
-                  Room was not inspected before check-out.
-                </div>
-              )}
-
-              {/* Summary */}
-              <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-                <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "5px" }}>
-                  <RiUserLine size={13} /> Reservation Summary
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  {[
-                    ["Guest",       selected.guest_name],
-                    ["Room",        `Room ${selected.room_number}`],
-                    ["Check-In",    selected.check_in],
-                    ["Check-Out",   selected.check_out],
-                    ["Duration",    `${Math.max(0,(new Date(selected.check_out)-new Date(selected.check_in))/86400000)} nights`],
-                    ["Room Charge", `₱${parseFloat(selected.total_amount||0).toLocaleString()}`],
-                  ].map(([k, v]) => (
-                    <div key={k} style={{ background: "#f8f9fa", borderRadius: "8px", padding: "10px 12px" }}>
-                      <div style={{ color: "#aaa", fontSize: "0.75rem", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
-                      <div style={{ fontWeight: "600", color: "#222", marginTop: "2px", fontSize: "0.88rem" }}>{v}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Extra Charges */}
-              <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-                <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px" }}>Extra Charges at Check-Out (Optional)</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                  <div>
-                    <label style={labelStyle}>Amount (₱)</label>
-                    <input type="number" value={extraCharges} onChange={e => setExtraCharges(e.target.value)} placeholder="0.00" style={inputStyle} onFocus={e => e.target.style.borderColor="#e65100"} onBlur={e => e.target.style.borderColor="#e8e8e8"} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Reason</label>
-                    <input value={extraNote} onChange={e => setExtraNote(e.target.value)} placeholder="e.g. Room service, minibar" style={inputStyle} onFocus={e => e.target.style.borderColor="#e65100"} onBlur={e => e.target.style.borderColor="#e8e8e8"} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Method */}
-              <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-                <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "5px" }}>
-                  <RiMoneyDollarCircleLine size={13} /> Payment Method
-                </div>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  {["cash","card","gcash","bank_transfer"].map(m => (
-                    <button key={m} onClick={() => setPaymentMethod(m)} style={{ flex: 1, padding: "8px 4px", border: `2px solid ${paymentMethod===m?"#e65100":"#e8e8e8"}`, borderRadius: "8px", background: paymentMethod===m?"#fff3e0":"white", cursor: "pointer", fontSize: "0.75rem", fontWeight: "700", color: paymentMethod===m?"#e65100":"#888", fontFamily: "Arial,sans-serif" }}>
-                      {m==="cash"?"Cash":m==="card"?"Card":m==="gcash"?"GCash":"Bank"}<br/>
-                      <span style={{ fontSize: "0.65rem", fontWeight: "400", color: "#aaa" }}>{m==="cash"?"💵":m==="card"?"💳":m==="gcash"?"📱":"🏦"}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Guest Notes */}
-              {selected?.notes && (
-                <div style={{ background: "#fffde7", border: "1px solid #fff176", borderRadius: "10px", padding: "10px 14px", marginBottom: "16px", display: "flex", gap: "8px", alignItems: "flex-start", fontSize: "0.83rem", color: "#555" }}>
-                  <RiStickyNoteLine size={14} color="#f59e0b" style={{ flexShrink: 0, marginTop: "1px" }} />
-                  <span><strong>Guest Notes:</strong> {selected.notes}</span>
-                </div>
-              )}
-
-              {/* Inspection result banner */}
-              {selected?.inspection_status === "has_damage" && (
-                <div style={{ background: "#fce4ec", border: "1.5px solid #ef9a9a", borderRadius: "10px", padding: "14px 16px", marginBottom: "16px" }}>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" }}>
-                    <RiAlertLine size={16} color="#c62828" />
-                    <span style={{ fontWeight: "700", color: "#c62828", fontSize: "0.88rem" }}>Damage Reported by Maintenance</span>
-                  </div>
-                  {selected.inspection_notes && (
-                    <div style={{ fontSize: "0.82rem", color: "#555", marginBottom: "10px", background: "#fff5f5", padding: "8px 10px", borderRadius: "7px" }}>
-                      {selected.inspection_notes}
-                    </div>
-                  )}
-                  {getInspectionCharges(selected).length > 0 && (
-                    <div>
-                      <div style={{ fontSize: ".72rem", fontWeight: "700", color: "#c62828", textTransform: "uppercase", marginBottom: "6px" }}>Damage Charges</div>
-                      {getInspectionCharges(selected).map((c, i) => (
-                        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.83rem", padding: "5px 8px", background: "#fff", borderRadius: "7px", marginBottom: "4px", border: "1px solid #ffcdd2" }}>
-                          <span style={{ color: "#333" }}>• {c.name}</span>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            {editingCharge?.index === i ? (
-                              <>
-                                <input type="number" autoFocus defaultValue={c.tbd ? "" : c.amount}
-                                  style={{ width: "90px", padding: "4px 8px", border: "1.5px solid #c62828", borderRadius: "6px", fontSize: ".83rem", outline: "none", fontFamily: "Arial,sans-serif" }}
-                                  onKeyDown={e => {
-                                    if (e.key === "Enter") saveChargePrice(selected, i, e.target.value);
-                                    if (e.key === "Escape") setEditingCharge(null);
-                                  }}
-                                  id={`charge-edit-${i}`}
-                                />
-                                <button onClick={() => saveChargePrice(selected, i, document.getElementById(`charge-edit-${i}`)?.value)}
-                                  style={{ background: "#07713c", border: "none", borderRadius: "6px", padding: "4px 8px", cursor: "pointer", color: "#fff", display: "flex", alignItems: "center" }}>
-                                  <RiCheckLine size={13} />
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                {c.tbd
-                                  ? <span style={{ fontSize: ".72rem", fontWeight: "700", color: "#f57f17", background: "#fff8e1", padding: "2px 7px", borderRadius: "8px", border: "1px solid #ffe082" }}>TBD</span>
-                                  : <span style={{ fontWeight: "700", color: "#c62828" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
-                                }
-                                <button onClick={() => setEditingCharge({ index: i })}
-                                  style={{ background: c.tbd ? "#f57f17" : "#f4f6f0", border: "none", borderRadius: "6px", padding: "4px 7px", cursor: "pointer", color: c.tbd ? "#fff" : "#555", display: "flex", alignItems: "center", gap: "3px", fontSize: ".72rem", fontWeight: "700" }}>
-                                  <RiPencilLine size={11} />{c.tbd ? "Set Price" : "Edit"}
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {getInspectionCharges(selected).some(c => c.tbd) && (
-                        <div style={{ fontSize: ".75rem", color: "#f57f17", marginTop: "6px", fontStyle: "italic" }}>
-                          ⚠ Some charges are TBD — click "Set Price" to enter the final amount before checkout.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              {selected?.inspection_status === "cleared" && (
-                <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "10px", padding: "10px 16px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", color: "#065f46", fontWeight: "600" }}>
-                  <RiCheckDoubleLine size={16} color="#07713c" /> Room inspected and cleared — no damage reported.
-                </div>
-              )}
-
-              {/* Bill Breakdown */}
-              <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-                <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px" }}>Bill Breakdown</div>
-
-                {/* ── Refund banner: only shows when stay was shortened via In-House ── */}
-                {selected?.refund_amount > 0 && selected?.original_checkout && (
-                  <div style={{ background: "#fff8e1", border: "1.5px solid #ffe082", borderRadius: "10px", padding: "14px 16px", marginBottom: "14px" }}>
-                    <div style={{ fontSize: ".7rem", fontWeight: 700, color: "#f57f17", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>
-                      ⚠ Stay Was Shortened — Refund Applied
-                    </div>
-                    {[
-                      ["Original Check-Out",       selected.original_checkout],
-                      ["New Check-Out",             selected.check_out],
-                      ["Last Payment (Original)",  `₱${parseFloat(selected.original_amount || 0).toLocaleString()}`],
-                    ].map(([k, v]) => (
-                      <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: ".84rem", color: "#555", marginBottom: 6, paddingBottom: 6, borderBottom: "1px dashed #ffe082" }}>
-                        <span>{k}</span>
-                        <span style={{ fontWeight: 700, color: "#333" }}>{v}</span>
-                      </div>
-                    ))}
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".92rem", fontWeight: 700, color: "#c62828", paddingTop: 4 }}>
-                      <span>Refund Issued to Guest</span>
-                      <span>−₱{parseFloat(selected.refund_amount).toLocaleString()}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Standard line items ── */}
-
-                {/* Room Charge — basTotal */}
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
-                  <span style={{ color: "#555" }}>Room Charge</span>
-                  <span style={{ fontWeight: "600", color: "#333" }}>₱{basTotal.toLocaleString()}</span>
-                </div>
-
-                {/* Reservation charges — already in Room Charge, shown as breakdown */}
-                {getAdditionalCharges(selected).filter(c => c.from_reservation).length > 0 && (
-                  <div style={{ marginBottom: "4px" }}>
-                    {getAdditionalCharges(selected).filter(c => c.from_reservation).map(c => (
-                      <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.79rem", color: "#888", padding: "2px 0 2px 12px" }}>
-                        <span>• {c.name} <span style={{ fontSize: ".7rem", color: "#bbb" }}>(reservation)</span></span>
-                        <span style={{ fontWeight: "600", color: "#aaa" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* In-House Charges — added during stay via InHouse page */}
-                {additionalTotal > 0 && (
-                  <>
-                    <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
-                      <span style={{ color: "#6a1b9a", fontWeight: "600" }}>In-House Charges (during stay)</span>
-                      <span style={{ fontWeight: "600", color: "#6a1b9a" }}>₱{additionalTotal.toLocaleString()}</span>
-                    </div>
-                    {getAdditionalCharges(selected).filter(c => !c.from_reservation).map(c => (
-                      <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.79rem", color: "#888", padding: "2px 0 2px 12px" }}>
-                        <span>• {c.name}</span>
-                        <span style={{ fontWeight: "600" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                {/* Inspection / Damage charges */}
-                {getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0) > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
-                    <span style={{ color: "#c62828", fontWeight: "600" }}>Damage / Inspection Charges</span>
-                    <span style={{ fontWeight: "600", color: "#c62828" }}>₱{getInspectionCharges(selected).reduce((s,c)=>s+parseFloat(c.amount||0),0).toLocaleString()}</span>
-                  </div>
-                )}
-
-                {/* Extra charges added at checkout */}
-                {extra > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
-                    <span style={{ color: "#555" }}>Extra Charges (Check-Out)</span>
-                    <span style={{ fontWeight: "600", color: "#333" }}>₱{extra.toLocaleString()}</span>
-                  </div>
-                )}
-
-                {/* Already paid at check-in */}
-                {alreadyPaid > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
-                    <span style={{ color: "#555" }}>Paid at Check-In</span>
-                    <span style={{ fontWeight: "600", color: "#4caf50" }}>-₱{alreadyPaid.toLocaleString()}</span>
-                  </div>
-                )}
-                {selected?.pay_later && alreadyPaid === 0 && (
-                  <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "8px", padding: "8px 12px", marginTop: "8px", fontSize: "0.8rem", color: "#f57f17", fontWeight: "600" }}>
-                    Guest opted to pay at check-out — no payment collected at check-in.
-                  </div>
-                )}
-                {selected?.pay_later && alreadyPaid > 0 && (
-                  <div style={{ background: "#e3f2fd", border: "1px solid #90caf9", borderRadius: "8px", padding: "8px 12px", marginTop: "8px", fontSize: "0.8rem", color: "#1565c0", fontWeight: "600" }}>
-                    Partial payment of ₱{alreadyPaid.toLocaleString()} collected at check-in. Remaining balance due now.
-                  </div>
-                )}
-                {/* In-House charge details shown inline above */}
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 4px", fontSize: "1.05rem" }}>
-                  <span style={{ fontWeight: "700", color: "#333" }}>Balance Due</span>
-                  <span style={{ fontWeight: "700", color: balanceDue > 0 ? "#e65100" : "#4caf50", fontSize: "1.2rem" }}>₱{balanceDue.toLocaleString()}</span>
-                </div>
-              </div>
-
-              {/* Collect Payment */}
-              <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "20px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-                <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "5px" }}>
-                  <RiMoneyDollarCircleLine size={13} /> Collect Payment
-                </div>
-                <div onClick={() => { setFullyPaid(!fullyPaid); if (!fullyPaid) setAmountReceived(balanceDue.toString()); }}
-                  style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", borderRadius: "10px", border: `2px solid ${fullyPaid?"#4caf50":"#e8e8e8"}`, background: fullyPaid?"#e8f5e9":"#f8f9fa", cursor: "pointer", marginBottom: "14px", transition: "all 0.2s" }}>
-                  <div style={{ width: "22px", height: "22px", borderRadius: "50%", border: `2px solid ${fullyPaid?"#4caf50":"#ccc"}`, background: fullyPaid?"#4caf50":"white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {fullyPaid && <span style={{ color: "white", fontSize: "0.75rem", fontWeight: "700" }}>✓</span>}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: "700", fontSize: "0.9rem", color: fullyPaid?"#1b5e20":"#333" }}>Guest has fully paid</div>
-                    <div style={{ fontSize: "0.78rem", color: "#888", marginTop: "1px" }}>Mark as fully settled — no change needed</div>
-                  </div>
-                </div>
-                {!fullyPaid && (
-                  <>
-                    <div style={{ marginBottom: "12px" }}>
-                      <label style={labelStyle}>Amount Received (₱)</label>
-                      <input type="number" value={amountReceived} onChange={e => setAmountReceived(e.target.value)}
-                        placeholder="Enter amount given by guest" style={{ ...inputStyle, fontSize: "1rem", fontWeight: "700" }}
-                        onFocus={e => e.target.style.borderColor="#e65100"} onBlur={e => e.target.style.borderColor="#e8e8e8"} />
-                    </div>
-                    {change > 0 && (
-                      <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ color: "#1b5e20", fontWeight: "600", fontSize: "0.9rem" }}>💵 Change to return</span>
-                        <span style={{ color: "#1b5e20", fontWeight: "700", fontSize: "1.2rem" }}>₱{change.toLocaleString()}</span>
-                      </div>
-                    )}
-                  </>
-                )}
-                {fullyPaid && (
-                  <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", textAlign: "center" }}>
-                    <span style={{ color: "#1b5e20", fontWeight: "700", fontSize: "0.95rem" }}>✅ Payment fully settled — ₱{grandTotal.toLocaleString()}</span>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: "flex", gap: "12px" }}>
-                <button onClick={() => setShowModal(false)} style={{ flex: 1, padding: "13px", background: "white", border: "2px solid #e0e0e0", borderRadius: "10px", cursor: "pointer", fontSize: "0.92rem", fontWeight: "600", color: "#666", fontFamily: "Arial,sans-serif" }}>Cancel</button>
-                <button onClick={handleCheckOut} disabled={processing || (!fullyPaid && !amountReceived)}
-                  style={{ flex: 2, padding: "13px", background: processing?"#aaa":"#e65100", border: "none", borderRadius: "10px", cursor: processing?"not-allowed":"pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px", boxShadow: "0 4px 12px rgba(230,81,0,0.3)" }}>
-                  <RiLogoutBoxLine size={16} />
-                  {processing ? "Processing..." : "Confirm Check-Out & Mark Paid"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <CheckOutModal
+          selected={selected}
+          onClose={() => setShowModal(false)}
+          onConfirm={handleCheckOut}
+          processing={processing}
+          successMsg={successMsg}
+          extraCharges={extraCharges}     setExtraCharges={setExtraCharges}
+          extraNote={extraNote}           setExtraNote={setExtraNote}
+          paymentMethod={paymentMethod}   setPaymentMethod={setPaymentMethod}
+          amountReceived={amountReceived} setAmountReceived={setAmountReceived}
+          fullyPaid={fullyPaid}           setFullyPaid={setFullyPaid}
+          editingCharge={editingCharge}   setEditingCharge={setEditingCharge}
+          onSaveChargePrice={saveChargePrice}
+          getAdditionalCharges={getAdditionalCharges}
+          getInspectionCharges={getInspectionCharges}
+        />
       )}
     </div>
   );

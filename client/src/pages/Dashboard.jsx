@@ -17,6 +17,7 @@ import Maintenance from "./Maintenance";
 import Pricing from "./Pricing";
 import ActivityLog from "./ActivityLog";
 import InHouse from "./InHouse";
+import Restaurant from "./Restaurant"; // ← NEW
 import {
   ComposedChart, Bar, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -26,6 +27,7 @@ import NotificationBell from "./NotificationBell";
 
 const ADMIN_ONLY       = ["Staff", "Log", "Pricing"];
 const MAINTENANCE_ONLY = ["Maintenance"];
+const RESTAURANT_ONLY  = ["Restaurant"]; // ← NEW
 
 const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -184,6 +186,7 @@ const ROLE_CFG = {
   staff:        { label: "Staff",        bg: "#ecfdf5", color: "#07713c", border: "#bbf7d0" },
   receptionist: { label: "Receptionist", bg: "#e3f2fd", color: "#1565c0", border: "#90caf9" },
   maintenance:  { label: "Maintenance",  bg: "#fff3e0", color: "#e65100", border: "#ffcc80" },
+  restaurant:   { label: "Restaurant",   bg: "#fdf2f8", color: "#9c27b0", border: "#e1bee7" }, // ← NEW
 };
 
 export default function Dashboard({ onLogout, user }) {
@@ -198,19 +201,29 @@ export default function Dashboard({ onLogout, user }) {
 
   useEffect(() => {
     if (role === "maintenance") setActiveNav("Maintenance");
+    if (role === "restaurant")  setActiveNav("Restaurant"); // ← NEW: land on Restaurant page
   }, [role]);
 
+  // ── Access guard ──────────────────────────────────────────────────────────
+  const canAccess = (key) => {
+    if (ADMIN_ONLY.includes(key)      && role !== "admin")                            return false;
+    if (MAINTENANCE_ONLY.includes(key) && role !== "admin" && role !== "maintenance") return false;
+    // Restaurant page: only admin + restaurant role
+    if (RESTAURANT_ONLY.includes(key) && role !== "admin" && role !== "restaurant")  return false;
+    // Restaurant role can ONLY see the Restaurant page (+ Settings via dropdown)
+    if (role === "restaurant" && !["Restaurant", "Settings"].includes(key))          return false;
+    return true;
+  };
+
   const handleNav = (key) => {
-    if (ADMIN_ONLY.includes(key) && role !== "admin") return;
-    if (MAINTENANCE_ONLY.includes(key) && role !== "admin" && role !== "maintenance") return;
+    if (!canAccess(key)) return;
     setActiveNav(key);
     setNavKey(k => k + 1);
     setShowDropdown(false);
   };
 
   const renderPage = () => {
-    if (ADMIN_ONLY.includes(activeNav) && role !== "admin") return <AccessDenied />;
-    if (MAINTENANCE_ONLY.includes(activeNav) && role !== "admin" && role !== "maintenance") return <AccessDenied />;
+    if (!canAccess(activeNav)) return <AccessDenied />;
     switch (activeNav) {
       case "Staff":        return <Staff />;
       case "Rooms":        return <Rooms userRole={role} />;
@@ -223,6 +236,7 @@ export default function Dashboard({ onLogout, user }) {
       case "Pricing":      return <Pricing />;
       case "Log":          return <ActivityLog />;
       case "Settings":     return <Settings user={user} userRole={role} />;
+      case "Restaurant":   return <Restaurant key={`restaurant-${navKey}`} user={user} />; // ← NEW
       default:             return <DashboardHome />;
     }
   };
@@ -254,7 +268,7 @@ export default function Dashboard({ onLogout, user }) {
               </div>
 
               <div className="topbar-right">
-                <NotificationBell onNavigate={handleNav} />
+                <NotificationBell onNavigate={handleNav} userRole={role} />
                 <div className="dd-wrap" onClick={e => e.stopPropagation()}>
                   <button className="profile-btn" onClick={() => setShowDropdown(d => !d)} type="button">
                     <div className="profile-avatar">{initials}</div>
