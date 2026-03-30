@@ -88,8 +88,6 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
   // Grand total = room rate + check-in charges
   const totalBill = baseTotal + chargesTotal;
 
-  // Remaining balance = grand total − downpayment already paid
-  // e.g. ₱1500 room + ₱200 charges − ₱450 downpayment = ₱1250 remaining
   const remainingBalance = Math.max(0, totalBill - reservationDownpayment);
 
   const amtReceived = parseFloat(amountReceived || 0);
@@ -112,7 +110,7 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
       <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px", overflowY: "auto" }}>
         <div style={{ background: "#f8f9fa", borderRadius: "20px", width: "min(640px, 95vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", fontFamily: "Arial,sans-serif" }}>
 
-          {/* ── Header ── */}
+        
           <div style={{ background: "linear-gradient(135deg,#07713c,#0a9150)", borderRadius: "20px 20px 0 0", padding: "24px 30px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <h3 style={{ margin: 0, color: "white", fontSize: "1.2rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px" }}>
@@ -129,7 +127,7 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
 
           <div style={{ padding: "24px 30px" }}>
 
-            {/* ── Reservation Summary ── */}
+     
             <div style={card}>
               <div style={sectionTitle("#07713c")}>
                 <RiUserLine size={13} /> Reservation Summary
@@ -150,9 +148,6 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
                 ))}
               </div>
 
-              {/* ── 30% Downpayment on File ──
-                  ONLY shows room rate vs downpayment.
-                  Check-in charges are NOT included here. */}
               {hasReservationDownpayment && (
                 <div style={{ marginTop: "10px", background: "#fff8e1", border: "1.5px solid #ffe082", borderRadius: "9px", padding: "11px 14px" }}>
                   <div style={{ fontSize: "0.72rem", fontWeight: "700", color: "#f57f17", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "8px" }}>
@@ -160,10 +155,10 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
                     {[
-                      // Room Rate = baseTotal only, never inflated by check-in charges
+   
                       ["Room Rate",   `₱${baseTotal.toLocaleString()}`],
                       ["Paid (30%)",  `₱${reservationDownpayment.toLocaleString()}`],
-                      // Balance Due = room rate ONLY minus downpayment — no extra charges here
+
                       ["Balance Due", `₱${Math.max(0, baseTotal - reservationDownpayment).toLocaleString()}`],
                     ].map(([lbl, val]) => (
                       <div key={lbl} style={{ background: "white", borderRadius: "7px", padding: "7px 10px", textAlign: "center" }}>
@@ -178,7 +173,7 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
                 </div>
               )}
 
-              {/* Charges included in room rate */}
+
               {resCharges.length > 0 && (
                 <div style={{ marginTop: "12px", borderTop: "1px dashed #e0e0e0", paddingTop: "12px" }}>
                   <div style={{ fontSize: "0.72rem", fontWeight: "700", color: "#888", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.4px" }}>
@@ -205,7 +200,7 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
               )}
             </div>
 
-            {/* ── Additional Charges at Check-In ── */}
+   
             <div style={card}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
                 <div style={sectionTitle("#07713c")}>
@@ -236,7 +231,6 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
                 </button>
               </div>
 
-              {/* Charge rows — only shown when there are charges */}
               {additionalCharges.length > 0 && (
                 <div style={{ marginBottom: "12px" }}>
                   {additionalCharges.map(c => (
@@ -269,9 +263,6 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
 
               <AddChargeRow onAdd={c => setAdditionalCharges(prev => [...prev, c])} />
 
-              {/* ── Remaining Balance — ALWAYS visible, outside the charges.length condition ──
-                  Replaces the old "Total (Room + Added Charges)" label.
-                  Shows: grand total minus any reservation downpayment. */}
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
                 padding: "11px 14px", marginTop: "14px",
@@ -296,7 +287,7 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
               </div>
             </div>
 
-            {/* ── Payment Option ── */}
+    
             <div style={card}>
               <div style={sectionTitle("#07713c")}>
                 <RiMoneyDollarCircleLine size={13} /> Payment Option
@@ -318,7 +309,7 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
               </div>
             </div>
 
-            {/* ── Pay Now section ── */}
+     
             {!payLater && (
               <>
                 <div style={card}>
@@ -398,7 +389,7 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
               </>
             )}
 
-            {/* ── Pay at checkout note ── */}
+
             {payLater && (
               <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "10px", padding: "14px 18px", marginBottom: "16px" }}>
                 <div style={{ fontWeight: "700", fontSize: ".88rem", color: "#f57f17", marginBottom: "3px" }}>
@@ -413,7 +404,6 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
               </div>
             )}
 
-            {/* ── Action buttons ── */}
             <div style={{ display: "flex", gap: "12px" }}>
               <button
                 onClick={onClose}
@@ -435,7 +425,7 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
         </div>
       </div>
 
-      {/* Restaurant Add-Ons picker */}
+   
       {showAddOns && (
         <RestaurantAddOnsModal
           reservationId={selected?.id}
