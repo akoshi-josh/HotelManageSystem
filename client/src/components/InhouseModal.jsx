@@ -113,13 +113,13 @@ export default function InhouseModal({
                       </div>
                     </div>
                     <div className="info-cell" style={{ gridColumn: "span 2" }}>
-                      <div className="info-lbl"><RiMoneyDollarCircleLine size={10} />Room Rate</div>
-                      <div className="info-val" style={{ fontSize: "1.1rem", color: "#07713c" }}>
-                        ₱{parseFloat(selected.total_amount || 0).toLocaleString()}
-                      </div>
+                    <div className="info-lbl"><RiMoneyDollarCircleLine size={10} />Total Bill</div>
+                    <div className="info-val" style={{ fontSize: "1.1rem", color: "#07713c" }}>
+                      ₱{parseFloat(selected.total_amount || 0).toLocaleString()}
+                    </div>
                     </div>
                   </div>
-
+                          
                   {/* Change Check-Out Date */}
                   <div className="extend-box">
                     <div className="extend-title"><RiCalendar2Line size={13} />
@@ -196,7 +196,7 @@ export default function InhouseModal({
                     </button>
                   </div>
 
-                  {/* Reservation charges — read-only */}
+                
                   {charges.filter(c => c.from_reservation).length > 0 && (
                     <div style={{ marginBottom: "8px" }}>
                       <div style={{ fontSize: ".66rem", fontWeight: "700", color: "#aaa", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "5px" }}>
@@ -211,7 +211,7 @@ export default function InhouseModal({
                     </div>
                   )}
 
-                  {/* In-house charges — editable */}
+                  
                   {charges.filter(c => !c.from_reservation).length > 0 ? (
                     <div style={{ marginBottom: "10px", maxHeight: "180px", overflowY: "auto" }}>
                       {charges.filter(c => c.from_reservation).length > 0 && (
@@ -255,10 +255,10 @@ export default function InhouseModal({
                   </div>
                 </div>
 
-                {/* Total Bill */}
+      
                 <div className="total-bar">
                   <div>
-                    <div className="total-lbl">Total Bill</div>
+                    <div className="total-lbl">Remaining Balance</div>
                     <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.6)", marginTop: "2px" }}>
                       {(() => {
                         const inHouseCount = charges.filter(c => !c.from_reservation).length;
@@ -271,7 +271,6 @@ export default function InhouseModal({
               </div>
             </div>
 
-            {/* Full-width Refund / Extra Charge Panel */}
             {refundInfo && extDate && (
               <div style={{ marginTop: 14 }}>
                 {refundInfo.diff > 0 ? (

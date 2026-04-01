@@ -73,6 +73,7 @@ export default function CheckOutModal({
 
 
   const paidInFullAtCheckIn = !selected?.pay_later && checkinPayment >= roomRate;
+  
 
 
   const partialAtCheckIn = !selected?.pay_later && checkinPayment > 0 && checkinPayment < roomRate;

@@ -8,6 +8,7 @@ import {
   RiRestaurantLine,
 } from "react-icons/ri";
 import RestaurantAddOnsModal from "./RestaurantAddOnsModal";
+import supabase from "../supabaseClient";
 
 const inputStyle = {
   width: "100%", padding: "10px 14px", border: "2px solid #e8e8e8",
@@ -30,7 +31,7 @@ const card = {
 };
 
 function AddChargeRow({ onAdd }) {
-  const [name, setName]     = useState("");
+  const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const handle = () => {
     if (!name.trim() || !amount) return;
@@ -62,55 +63,130 @@ function AddChargeRow({ onAdd }) {
 }
 
 export default function CheckInModal({ selected, onClose, onConfirm, processing }) {
+  const allResCharges = (() => {
+    try { return JSON.parse(selected?.additional_charges || "[]"); } catch { return []; }
+  })();
+
   const [payLater,          setPayLater]          = useState(false);
   const [paymentMethod,     setPaymentMethod]     = useState("cash");
   const [fullyPaid,         setFullyPaid]         = useState(false);
   const [amountReceived,    setAmountReceived]    = useState("");
-  const [additionalCharges, setAdditionalCharges] = useState([]);
-  const [showAddOns,        setShowAddOns]        = useState(false);
+  const [additionalCharges, setAdditionalCharges] = useState(
+    allResCharges.filter(c => c.from_restaurant).map(c => ({ ...c }))
+  );
+  const [showAddOns,   setShowAddOns]   = useState(false);
+  const [sendingOrder, setSendingOrder] = useState(false);
 
   if (!selected) return null;
 
-  const getResCharges = () => {
-    try { return JSON.parse(selected?.additional_charges || "[]"); } catch { return []; }
-  };
+  const resNonRestaurantCharges = allResCharges.filter(c => !c.from_restaurant);
 
-  // Downpayment already paid at reservation stage (30%)
   const reservationDownpayment    = parseFloat(selected?.amount_paid || 0);
   const hasReservationDownpayment = selected?.pay_later && reservationDownpayment > 0;
 
-  // Room rate from DB (total_amount)
+  const nights   = (selected.check_in && selected.check_out)
+    ? Math.max(0, Math.round((new Date(selected.check_out) - new Date(selected.check_in)) / 86400000))
+    : null;
+
   const baseTotal    = parseFloat(selected?.total_amount || 0);
-
-  // New charges added right now at check-in
-  const chargesTotal = additionalCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
-
-  // Grand total = room rate + check-in charges
-  const totalBill = baseTotal + chargesTotal;
+  const chargesTotal = additionalCharges
+  .filter(c => !allResCharges.some(rc => rc.id === c.id))
+  .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+  const totalBill    = baseTotal + chargesTotal;
+  const allResChargesSum = allResCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+  const roomrate = baseTotal - allResChargesSum;
 
   const remainingBalance = Math.max(0, totalBill - reservationDownpayment);
+  const amtReceived      = parseFloat(amountReceived || 0);
+  const change  = fullyPaid ? 0 : Math.max(0, amtReceived - remainingBalance);
+  const balance = fullyPaid ? 0 : Math.max(0, remainingBalance - amtReceived);  
 
-  const amtReceived = parseFloat(amountReceived || 0);
-  const change      = fullyPaid ? 0 : Math.max(0, amtReceived - totalBill);
-  const balance     = fullyPaid ? 0 : Math.max(0, totalBill - amtReceived);
 
-  const handleConfirm = () => {
-    const paidAmt = payLater
-      ? reservationDownpayment
-      : fullyPaid ? totalBill : amtReceived;
+  const durationLabel = nights !== null
+    ? `${nights} night${nights !== 1 ? "s" : ""}`
+    : "Open-ended";
+
+  const handleConfirm = async () => {
+    setSendingOrder(true);
+
+    if (selected?.id) {
+      const { data: queuedOrders } = await supabase
+        .from("restaurant_orders")
+        .select("*")
+        .eq("reservation_id", selected.id)
+        .eq("status", "queued");
+
+      if (queuedOrders && queuedOrders.length > 0) {
+        await supabase
+          .from("restaurant_orders")
+          .update({ status: "pending", updated_at: new Date().toISOString() })
+          .eq("reservation_id", selected.id)
+          .eq("status", "queued");
+
+        for (const order of queuedOrders) {
+          const items   = Array.isArray(order.items) ? order.items : [];
+          const summary = items.map(i => `${i.name} ×${i.qty}`).join(", ");
+          await supabase.from("notifications").insert([{
+            type:        "restaurant_order",
+            title:       `🍽 New Order — Room ${selected.room_number || "?"}`,
+            message:     `${selected.guest_name}: ${summary} · ₱${parseFloat(order.total_amount).toLocaleString()}`,
+            nav_target:  "Restaurant",
+            is_read:     false,
+            target_role: "restaurant",
+          }]);
+        }
+      }
+    }
+
+    const freshRestaurantCharges = additionalCharges.filter(c =>
+      c.from_restaurant && !allResCharges.some(rc => rc.id === c.id)
+    );
+
+    if (freshRestaurantCharges.length > 0) {
+      const orderItems = freshRestaurantCharges.map(c => ({
+        id:       c.restaurant_item_id || c.id,
+        name:     c.name.replace(/^\[Restaurant\] /, "").replace(/ ×\d+$/, ""),
+        price:    c.unit_price || c.amount,
+        qty:      c.qty || 1,
+        subtotal: parseFloat(c.amount),
+      }));
+      const orderTotal = freshRestaurantCharges.reduce((s, c) => s + parseFloat(c.amount), 0);
+
+      await supabase.from("restaurant_orders").insert([{
+        reservation_id: selected?.id || null,
+        guest_name:     selected.guest_name,
+        room_number:    String(selected.room_number || ""),
+        items:          orderItems,
+        total_amount:   orderTotal,
+        status:         "pending",
+      }]);
+
+      const summary = orderItems.map(i => `${i.name} ×${i.qty}`).join(", ");
+      await supabase.from("notifications").insert([{
+        type:        "restaurant_order",
+        title:       `🍽 New Order — Room ${selected.room_number || "?"}`,
+        message:     `${selected.guest_name}: ${summary} · ₱${orderTotal.toLocaleString()}`,
+        nav_target:  "Restaurant",
+        is_read:     false,
+        target_role: "restaurant",
+      }]);
+    }
+
+    const paidAmt   = payLater ? reservationDownpayment : fullyPaid ? totalBill : amtReceived;
     const isPartial = !payLater && !fullyPaid && paidAmt < totalBill && paidAmt > 0;
+
+    setSendingOrder(false);
     onConfirm({ paidAmt, payLater, isPartial, paymentMethod, additionalCharges });
   };
 
-  const resCharges             = getResCharges();
   const restaurantChargesCount = additionalCharges.filter(c => c.from_restaurant).length;
+  const isProcessing = processing || sendingOrder;
 
   return (
     <>
       <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px", overflowY: "auto" }}>
         <div style={{ background: "#f8f9fa", borderRadius: "20px", width: "min(640px, 95vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", fontFamily: "Arial,sans-serif" }}>
 
-        
           <div style={{ background: "linear-gradient(135deg,#07713c,#0a9150)", borderRadius: "20px 20px 0 0", padding: "24px 30px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <h3 style={{ margin: 0, color: "white", fontSize: "1.2rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px" }}>
@@ -127,7 +203,6 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
 
           <div style={{ padding: "24px 30px" }}>
 
-     
             <div style={card}>
               <div style={sectionTitle("#07713c")}>
                 <RiUserLine size={13} /> Reservation Summary
@@ -138,8 +213,8 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
                   ["Room",      `Room ${selected.room_number}`],
                   ["Check-In",  selected.check_in],
                   ["Check-Out", selected.check_out || "Open Stay"],
-                  ["Duration",  selected.check_out ? `${Math.max(0, (new Date(selected.check_out) - new Date(selected.check_in)) / 86400000)} nights` : "Open-ended"],
-                  ["Room Rate", `₱${baseTotal.toLocaleString()}`],
+                  ["Duration",  durationLabel],
+                  ["Room Rate", `₱${roomrate.toLocaleString()}`],
                 ].map(([k, v]) => (
                   <div key={k} style={{ background: "#f8f9fa", borderRadius: "8px", padding: "10px 12px" }}>
                     <div style={{ color: "#aaa", fontSize: "0.75rem", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
@@ -155,10 +230,8 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
                     {[
-   
-                      ["Room Rate",   `₱${baseTotal.toLocaleString()}`],
+                      ["Grand Total",   `₱${baseTotal.toLocaleString()}`],
                       ["Paid (30%)",  `₱${reservationDownpayment.toLocaleString()}`],
-
                       ["Balance Due", `₱${Math.max(0, baseTotal - reservationDownpayment).toLocaleString()}`],
                     ].map(([lbl, val]) => (
                       <div key={lbl} style={{ background: "white", borderRadius: "7px", padding: "7px 10px", textAlign: "center" }}>
@@ -173,34 +246,8 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
                 </div>
               )}
 
-
-              {resCharges.length > 0 && (
-                <div style={{ marginTop: "12px", borderTop: "1px dashed #e0e0e0", paddingTop: "12px" }}>
-                  <div style={{ fontSize: "0.72rem", fontWeight: "700", color: "#888", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.4px" }}>
-                    Charges Included in Room Rate
-                  </div>
-                  {resCharges.map(c => (
-                    <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.83rem", color: "#555", padding: "4px 0", borderBottom: "1px dashed #f0f0f0" }}>
-                      <span>• {c.name}</span>
-                      <span style={{ fontWeight: "600", color: "#07713c" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.85rem", fontWeight: "700", marginTop: "8px", paddingTop: "6px", borderTop: "1px solid #e0e0e0" }}>
-                    <div>
-                      <span style={{ color: "#e65100" }}>Remaining Balance</span>
-                      {hasReservationDownpayment && (
-                        <div style={{ fontSize: "0.72rem", color: "#888", fontWeight: "400", marginTop: "1px" }}>
-                          ₱{baseTotal.toLocaleString()} room − ₱{reservationDownpayment.toLocaleString()} downpayment
-                        </div>
-                      )}
-                    </div>
-                    <span style={{ color: "#e65100" }}>₱{Math.max(0, baseTotal - reservationDownpayment).toLocaleString()}</span>
-                  </div>
-                </div>
-              )}
             </div>
 
-   
             <div style={card}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
                 <div style={sectionTitle("#07713c")}>
@@ -208,42 +255,39 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
                 </div>
                 <button
                   onClick={() => setShowAddOns(true)}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: "6px",
-                    padding: "7px 14px", background: "#fff8e1",
-                    border: "1.5px solid #f59e0b", borderRadius: "8px",
-                    cursor: "pointer", fontSize: "0.78rem", fontWeight: "700",
-                    color: "#b45309", fontFamily: "Arial,sans-serif", position: "relative",
-                  }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 14px", background: "#fff8e1", border: "1.5px solid #f59e0b", borderRadius: "8px", cursor: "pointer", fontSize: "0.78rem", fontWeight: "700", color: "#b45309", fontFamily: "Arial,sans-serif", position: "relative" }}
                 >
                   <RiRestaurantLine size={14} />
                   Restaurant Add-Ons
                   {restaurantChargesCount > 0 && (
-                    <span style={{
-                      position: "absolute", top: "-7px", right: "-7px",
-                      background: "#07713c", color: "#fff", borderRadius: "50%",
-                      width: "18px", height: "18px", fontSize: ".65rem", fontWeight: "700",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>
+                    <span style={{ position: "absolute", top: "-7px", right: "-7px", background: "#07713c", color: "#fff", borderRadius: "50%", width: "18px", height: "18px", fontSize: ".65rem", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {restaurantChargesCount}
                     </span>
                   )}
                 </button>
               </div>
 
+              {restaurantChargesCount > 0 && (
+                <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "9px", padding: "10px 14px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px", fontSize: ".8rem", color: "#065f46" }}>
+                  <RiRestaurantLine size={14} />
+                  <span>
+                    <strong>{restaurantChargesCount} restaurant item{restaurantChargesCount !== 1 ? "s" : ""}</strong> staged — order fires to the kitchen when you confirm check-in.
+                  </span>
+                </div>
+              )}
+
               {additionalCharges.length > 0 && (
                 <div style={{ marginBottom: "12px" }}>
                   {additionalCharges.map(c => (
-                    <div key={c.id} style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      padding: "7px 10px",
-                      background: c.from_restaurant ? "#fffbeb" : "#f0fdf4",
-                      border: `1px solid ${c.from_restaurant ? "#fde68a" : "#bbf7d0"}`,
-                      borderRadius: "8px", marginBottom: "5px",
-                    }}>
+                    <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px", background: c.from_restaurant ? "#fffbeb" : "#f0fdf4", border: `1px solid ${c.from_restaurant ? "#fde68a" : "#bbf7d0"}`, borderRadius: "8px", marginBottom: "5px" }}>
                       <span style={{ fontSize: "0.85rem", color: "#333", display: "flex", alignItems: "center", gap: "6px" }}>
                         {c.from_restaurant && <RiRestaurantLine size={12} color="#b45309" />}
                         {c.name}
+                        {c.from_restaurant && (
+                          <span style={{ fontSize: ".68rem", background: "#fff3e0", color: "#e65100", padding: "1px 6px", borderRadius: "10px", fontWeight: "700" }}>
+                            → kitchen
+                          </span>
+                        )}
                       </span>
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                         <span style={{ fontWeight: "700", color: c.from_restaurant ? "#b45309" : "#07713c", fontSize: "0.85rem" }}>
@@ -263,11 +307,25 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
 
               <AddChargeRow onAdd={c => setAdditionalCharges(prev => [...prev, c])} />
 
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "11px 14px", marginTop: "14px",
-                background: "#fff3e0", border: "1.5px solid #ffb74d", borderRadius: "10px",
-              }}>
+                            {allResCharges.length > 0 && (
+              <div style={{ marginTop: "10px", borderTop: "1px dashed #e0e0e0", paddingTop: "10px" }}>
+                <div style={{ fontSize: "0.72rem", fontWeight: "700", color: "#888", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.4px" }}>
+                  Charges from Reservation
+                </div>
+                {allResCharges.map(c => (
+                  <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.83rem", color: "#555", padding: "4px 0", borderBottom: "1px dashed #f0f0f0" }}>
+                    <span>• {c.name}</span>
+                    <span style={{ fontWeight: "600", color: "#07713c" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+                  </div>
+                ))}
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", fontWeight: "700", marginTop: "8px", paddingTop: "6px", borderTop: "1px solid #e0e0e0" }}>
+                  <span style={{ color: "#333" }}>Reservation Total (Room + Charges)</span>
+                  <span style={{ color: "#07713c" }}>₱{baseTotal.toLocaleString()}</span>
+                </div>
+              </div>
+            )}
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", marginTop: "14px", background: "#fff3e0", border: "1.5px solid #ffb74d", borderRadius: "10px" }}>
                 <div>
                   <div style={{ fontSize: "0.86rem", fontWeight: "700", color: "#e65100" }}>
                     Remaining Balance
@@ -287,7 +345,6 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
               </div>
             </div>
 
-    
             <div style={card}>
               <div style={sectionTitle("#07713c")}>
                 <RiMoneyDollarCircleLine size={13} /> Payment Option
@@ -309,7 +366,6 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
               </div>
             </div>
 
-     
             {!payLater && (
               <>
                 <div style={card}>
@@ -389,7 +445,6 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
               </>
             )}
 
-
             {payLater && (
               <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "10px", padding: "14px 18px", marginBottom: "16px" }}>
                 <div style={{ fontWeight: "700", fontSize: ".88rem", color: "#f57f17", marginBottom: "3px" }}>
@@ -407,17 +462,18 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
             <div style={{ display: "flex", gap: "12px" }}>
               <button
                 onClick={onClose}
-                style={{ flex: 1, padding: "13px", background: "white", border: "2px solid #e0e0e0", borderRadius: "10px", cursor: "pointer", fontSize: "0.92rem", fontWeight: "600", color: "#666", fontFamily: "Arial,sans-serif" }}
+                disabled={isProcessing}
+                style={{ flex: 1, padding: "13px", background: "white", border: "2px solid #e0e0e0", borderRadius: "10px", cursor: isProcessing ? "not-allowed" : "pointer", fontSize: "0.92rem", fontWeight: "600", color: "#666", fontFamily: "Arial,sans-serif" }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={processing || (!payLater && !fullyPaid && (!amountReceived || amtReceived <= 0))}
-                style={{ flex: 2, padding: "13px", background: processing ? "#aaa" : "#07713c", border: "none", borderRadius: "10px", cursor: processing ? "not-allowed" : "pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px" }}
+                disabled={isProcessing || (!payLater && !fullyPaid && (!amountReceived || amtReceived <= 0))}
+                style={{ flex: 2, padding: "13px", background: isProcessing ? "#aaa" : "#07713c", border: "none", borderRadius: "10px", cursor: isProcessing ? "not-allowed" : "pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px" }}
               >
                 <RiLoginBoxLine size={16} />
-                {processing ? "Processing..." : "Confirm Check-In"}
+                {sendingOrder ? "Sending to Kitchen…" : isProcessing ? "Processing..." : "Confirm Check-In"}
               </button>
             </div>
 
@@ -425,12 +481,12 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
         </div>
       </div>
 
-   
       {showAddOns && (
         <RestaurantAddOnsModal
           reservationId={selected?.id}
           guestName={selected?.guest_name}
           roomNumber={selected?.room_number}
+          isCheckedIn={true}
           onClose={() => setShowAddOns(false)}
           onConfirm={(charges) => {
             setAdditionalCharges(prev => [...prev, ...charges]);

@@ -117,7 +117,7 @@ export default function InHouse({ highlightId }) {
 
   const today = new Date().toISOString().split("T")[0];
 
-  useEffect(() => { fetchGuests(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchGuests(); }, []); 
 
   const fetchGuests = async () => {
     setLoading(true);
@@ -134,13 +134,14 @@ export default function InHouse({ highlightId }) {
     try { return JSON.parse(res?.additional_charges || "[]"); } catch { return []; }
   };
 
-  const calcTotal = (res) => {
-    const base    = parseFloat(res.total_amount || 0);
-    const inHouse = getCharges(res)
-      .filter(c => !c.from_reservation)
-      .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
-    return base + inHouse;
-  };
+const calcTotal = (res) => {
+  const base = parseFloat(res.total_amount || 0);
+  const postCheckinCharges = getCharges(res)
+    .filter(c => !c.from_reservation && !c.from_checkin)
+    .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+  const amountPaid = parseFloat(res.amount_paid || 0);
+  return base + postCheckinCharges - amountPaid;
+};
 
   const nightsStayed = (checkIn) => Math.max(1, Math.floor((new Date() - new Date(checkIn)) / 86400000));
   const nightsLeft   = (checkOut) => checkOut ? Math.max(0, Math.ceil((new Date(checkOut) - new Date()) / 86400000)) : null;

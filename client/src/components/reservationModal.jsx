@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { RiDeleteBinLine, RiRestaurantLine } from "react-icons/ri";
 import RestaurantAddOnsModal from "./RestaurantAddOnsModal";
+import supabase from "../supabaseClient";
 
 function AddChargeInline({ onAdd }) {
-  const [name, setName]     = React.useState("");
+  const [name, setName] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const handle = () => {
     if (!name.trim() || !amount) return;
@@ -65,6 +66,58 @@ export default function ReservationModal({
 
   const restaurantChargesCount = (form.additional_charges || []).filter(c => c.from_restaurant).length;
 
+  const handleSave = async () => {
+    await onSave();
+
+    const restaurantCharges = (form.additional_charges || []).filter(c => c.from_restaurant);
+    if (restaurantCharges.length === 0) return;
+
+    try {
+      let reservationId = editRes?.id || null;
+
+      if (!reservationId && form.guest_name) {
+        const { data: found } = await supabase
+          .from("reservations")
+          .select("id")
+          .eq("guest_name", form.guest_name.trim())
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (found && found.length > 0) reservationId = found[0].id;
+      }
+
+      const orderItems = restaurantCharges.map(c => ({
+        id: c.restaurant_item_id || c.id,
+        name: c.name.replace(/^\[Restaurant\] /, "").replace(/ ×\d+$/, ""),
+        price: c.unit_price || c.amount,
+        qty: c.qty || 1,
+        subtotal: parseFloat(c.amount),
+      }));
+
+      const orderTotal = restaurantCharges.reduce((s, c) => s + parseFloat(c.amount), 0);
+      const roomNumber = selectedRoom?.room_number || form.room_number || "";
+
+      if (reservationId) {
+        await supabase
+          .from("restaurant_orders")
+          .delete()
+          .eq("reservation_id", reservationId)
+          .eq("status", "queued");
+      }
+
+      await supabase.from("restaurant_orders").insert([{
+        reservation_id: reservationId,
+        guest_name: form.guest_name,
+        room_number: String(roomNumber),
+        items: orderItems,
+        total_amount: orderTotal,
+        status: "queued",
+      }]);
+
+    } catch (err) {
+      console.error("Failed to queue restaurant pre-order:", err);
+    }
+  };
+
   return (
     <>
       <div
@@ -122,7 +175,6 @@ export default function ReservationModal({
               </div>
             )}
 
-            {/* Guest Information */}
             <div style={{ background: "white", borderRadius: "12px", padding: "20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
               <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#2d6a2d", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "16px" }}>
                 👤 Guest Information
@@ -161,7 +213,6 @@ export default function ReservationModal({
               </div>
             </div>
 
-            {/* Room & Dates */}
             <div style={{ background: "white", borderRadius: "12px", padding: "20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
               <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#2d6a2d", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "16px" }}>
                 🛏️ Room & Dates
@@ -278,9 +329,9 @@ export default function ReservationModal({
                     <div style={{ marginTop: "8px", background: "#fff3e0", border: "1px solid #ffcc80", borderRadius: "9px", padding: "14px 16px" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px" }}>
                         {[
-                          ["Room Rate",          `₱${calcRoomOnly().toLocaleString()}`],
+                          ["Room Rate", `₱${calcRoomOnly().toLocaleString()}`],
                           ["Additional Charges", `₱${(calcTotal() - calcRoomOnly()).toLocaleString()}`],
-                          ["Grand Total",        `₱${calcTotal().toLocaleString()}`],
+                          ["Grand Total", `₱${calcTotal().toLocaleString()}`],
                         ].map(([lbl, val]) => (
                           <div key={lbl} style={{ background: "white", borderRadius: "8px", padding: "8px 12px" }}>
                             <div style={{ fontSize: "0.68rem", color: "#aaa", fontWeight: "700", textTransform: "uppercase", marginBottom: "3px" }}>{lbl}</div>
@@ -307,7 +358,6 @@ export default function ReservationModal({
               )}
             </div>
 
-            {/* Status & Notes */}
             <div style={{ background: "white", borderRadius: "12px", padding: "20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
               <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#2d6a2d", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "16px" }}>
                 Status & Notes
@@ -336,13 +386,11 @@ export default function ReservationModal({
               </div>
             </div>
 
-            {/* Additional Charges + Restaurant Add-Ons */}
             <div style={{ background: "white", borderRadius: "12px", padding: "20px", marginBottom: "24px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
                 <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#2d6a2d", textTransform: "uppercase", letterSpacing: "0.8px" }}>
                   Additional Charges / Requests
                 </div>
-                {/* Restaurant Add-Ons button */}
                 <button
                   onClick={() => setShowAddOns(true)}
                   style={{
@@ -369,11 +417,12 @@ export default function ReservationModal({
                 </button>
               </div>
 
-              {/* Queued order notice */}
               {restaurantChargesCount > 0 && (
                 <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "9px", padding: "10px 14px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px", fontSize: ".8rem", color: "#b45309" }}>
                   <RiRestaurantLine size={14} />
-                  <span><strong>{restaurantChargesCount} restaurant pre-order{restaurantChargesCount !== 1 ? "s" : ""}</strong> will be queued — restaurant will be notified once the guest checks in.</span>
+                  <span>
+                    <strong>{restaurantChargesCount} restaurant pre-order{restaurantChargesCount !== 1 ? "s" : ""}</strong> will be saved to the Restaurant as Queued — they move to Active Orders once the guest checks in.
+                  </span>
                 </div>
               )}
 
@@ -427,7 +476,7 @@ export default function ReservationModal({
                 Cancel
               </button>
               <button
-                onClick={onSave} disabled={saving}
+                onClick={handleSave} disabled={saving}
                 style={{ flex: 2, padding: "13px", background: saving ? "#aaa" : "#2d6a2d", border: "none", borderRadius: "10px", cursor: saving ? "not-allowed" : "pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", boxShadow: saving ? "none" : "0 4px 12px rgba(45,106,45,0.35)" }}
               >
                 {saving ? "Saving..." : editRes ? "Save Changes" : "Create Reservation"}
@@ -438,16 +487,14 @@ export default function ReservationModal({
         </div>
       </div>
 
-      {/* Restaurant Add-Ons Picker */}
       {showAddOns && (
         <RestaurantAddOnsModal
           reservationId={editRes?.id || null}
           guestName={form.guest_name}
           roomNumber={form.room_number || ""}
-          isCheckedIn={false} 
+          isCheckedIn={false}
           onClose={() => setShowAddOns(false)}
           onConfirm={(charges) => {
-            // Mark charges as from_restaurant so they display with the queued badge
             const markedCharges = charges.map(c => ({ ...c, from_restaurant: true }));
             setForm(prev => ({
               ...prev,

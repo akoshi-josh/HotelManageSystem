@@ -74,14 +74,13 @@ export default function RestaurantAddOnsModal({
   reservationId  = null,
   guestName      = "Guest",
   roomNumber     = "",
-  isCheckedIn    = true,   // true → pending order  |  false → queued (pre-order)
+  isCheckedIn    = true,
 }) {
   const [items,   setItems]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [cart,    setCart]    = useState({});
   const [search,  setSearch]  = useState("");
   const [cat,     setCat]     = useState("all");
-  const [saving,  setSaving]  = useState(false);
 
   useEffect(() => {
     supabase.from("restaurant_items").select("*").eq("status", "available").order("category")
@@ -102,49 +101,19 @@ export default function RestaurantAddOnsModal({
   const cartCount = Object.values(cart).reduce((s, q) => s + q, 0);
   const cartTotal = cartItems.reduce((s, it) => s + it.price * (cart[it.id] || 0), 0);
 
-  const handleConfirm = async () => {
-    if (cartCount === 0 || saving) return;
-    setSaving(true);
+  const handleConfirm = () => {
+    if (cartCount === 0) return;
 
-    const orderItems = cartItems.map(it => ({
-      id: it.id, name: it.name, price: it.price,
-      qty: cart[it.id], subtotal: it.price * cart[it.id],
-    }));
-
-    // Save order — status depends on check-in state
-    const orderStatus = isCheckedIn ? "pending" : "queued";
-
-    await supabase.from("restaurant_orders").insert([{
-      reservation_id: reservationId || null,
-      guest_name:     guestName,
-      room_number:    roomNumber,
-      items:          orderItems,
-      total_amount:   cartTotal,
-      status:         orderStatus,
-    }]);
-
-    // Only notify restaurant when order is live (pending), NOT for queued pre-orders
-    if (isCheckedIn) {
-      const summary = orderItems.map(i => `${i.name} ×${i.qty}`).join(", ");
-      await supabase.from("notifications").insert([{
-        type:        "restaurant_order",   // used by NotificationBell to filter per-role
-        title:       `🍽 New Order — Room ${roomNumber || "?"}`,
-        message:     `${guestName}: ${summary} · ₱${cartTotal.toLocaleString()}`,
-        nav_target:  "Restaurant",
-        is_read:     false,
-        target_role: "restaurant",         // custom field — NotificationBell reads this
-      }]);
-    }
-
-    // Build charges for billing (added to additional_charges on the reservation)
     const charges = cartItems.map(it => ({
       id:              `rst-${it.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name:            `[Restaurant] ${it.name} ×${cart[it.id]}`,
       amount:          it.price * cart[it.id],
       from_restaurant: true,
+      restaurant_item_id: it.id,
+      qty:             cart[it.id],
+      unit_price:      it.price,
     }));
 
-    setSaving(false);
     onConfirm(charges, cartTotal);
   };
 
@@ -162,20 +131,29 @@ export default function RestaurantAddOnsModal({
               </p>
               <p className="rao-sub">
                 {isCheckedIn
-                  ? "Guest is checked in — order sent to kitchen immediately"
-                  : "Guest not checked in — order held until check-in"}
+                  ? "Items will be added to additional charges — sent to kitchen on check-in confirm"
+                  : "Items will be queued — restaurant notified when guest checks in"}
               </p>
             </div>
             <button className="rao-x" onClick={onClose}>×</button>
           </div>
 
-          {/* Queued warning banner */}
           {!isCheckedIn && (
             <div className="queued-banner">
               <RiTimeLine size={15} color="#b45309" style={{ flexShrink: 0, marginTop: "1px" }} />
               <span>
-                <strong>Pre-order:</strong> Order will be saved as <strong>queued</strong>.
+                <strong>Pre-order:</strong> Items are added to additional charges only.
                 The restaurant will be notified automatically when the guest checks in.
+              </span>
+            </div>
+          )}
+
+          {isCheckedIn && (
+            <div className="queued-banner" style={{ background: "#ecfdf5", borderBottomColor: "#a7f3d0", color: "#065f46" }}>
+              <RiShoppingCartLine size={15} color="#065f46" style={{ flexShrink: 0, marginTop: "1px" }} />
+              <span>
+                <strong>Note:</strong> Items are staged in additional charges.
+                The kitchen order is sent only after you confirm check-in.
               </span>
             </div>
           )}
@@ -231,12 +209,12 @@ export default function RestaurantAddOnsModal({
             )}
             <div className="rao-foot">
               <button className="rao-cancel" onClick={onClose}>Cancel</button>
-              <button className="rao-confirm" onClick={handleConfirm} disabled={cartCount === 0 || saving}>
+              <button className="rao-confirm" onClick={handleConfirm} disabled={cartCount === 0}>
                 <RiShoppingCartLine size={15} />
-                {saving ? "Saving…"
-                  : cartCount === 0 ? "Select items"
+                {cartCount === 0
+                  ? "Select items"
                   : isCheckedIn
-                    ? `Send to Kitchen — ₱${cartTotal.toLocaleString()}`
+                    ? `Add to Charges — ₱${cartTotal.toLocaleString()}`
                     : `Pre-Order — ₱${cartTotal.toLocaleString()}`
                 }
               </button>
