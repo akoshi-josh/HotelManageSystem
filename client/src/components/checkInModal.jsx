@@ -186,6 +186,11 @@ const paidAmt = payLater
   const restaurantChargesCount = additionalCharges.filter(c => c.from_restaurant).length;
   const isProcessing = processing || sendingOrder;
 
+  // Confirm button is disabled when:
+  // - currently processing, OR
+  // - "Pay Now" is selected AND guest has not marked fully paid AND no valid amount has been entered
+  const isConfirmDisabled = isProcessing || (!payLater && !fullyPaid && amtReceived <= 0);
+
   return (
     <>
       <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px", overflowY: "auto" }}>
@@ -391,10 +396,11 @@ const paidAmt = payLater
                           type="number" value={amountReceived}
                           onChange={e => setAmountReceived(e.target.value)}
                           placeholder="Enter amount given by guest"
-                          style={{ ...inputStyle, fontSize: "1rem", fontWeight: "700" }}
+                          style={{ ...inputStyle, fontSize: "1rem", fontWeight: "700", MozAppearance: "textfield" }}
                           onFocus={e => e.target.style.borderColor = "#07713c"}
                           onBlur={e => e.target.style.borderColor = "#e8e8e8"}
                         />
+                        <style>{`input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }`}</style>
                       </div>
                       {change > 0 && (
                         <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
@@ -446,8 +452,8 @@ const paidAmt = payLater
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={isProcessing || (!payLater && !fullyPaid && (!amountReceived || amtReceived <= 0))}
-                style={{ flex: 2, padding: "13px", background: isProcessing ? "#aaa" : "#07713c", border: "none", borderRadius: "10px", cursor: isProcessing ? "not-allowed" : "pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px" }}
+                disabled={isConfirmDisabled}
+                style={{ flex: 2, padding: "13px", background: isConfirmDisabled ? "#aaa" : "#07713c", border: "none", borderRadius: "10px", cursor: isConfirmDisabled ? "not-allowed" : "pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px" }}
               >
                 <RiLoginBoxLine size={16} />
                 {sendingOrder ? "Sending to Kitchen…" : isProcessing ? "Processing..." : "Confirm Check-In"}

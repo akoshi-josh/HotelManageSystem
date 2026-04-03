@@ -80,6 +80,11 @@ export default function CheckOutModal({
 
   const partialAtCheckIn = !selected?.pay_later && checkinPayment > 0 && checkinPayment < roomRate;
 
+  // Confirm button is disabled when:
+  // - currently processing, OR
+  // - guest has not marked fully paid AND no valid amount has been entered
+  const isConfirmDisabled = processing || (!fullyPaid && amtGiven <= 0);
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px" }}>
       <div style={{ background: "#f8f9fa", borderRadius: "20px", width: "min(680px, 95vw)", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.25)", fontFamily: "Arial,sans-serif" }}>
@@ -329,12 +334,6 @@ export default function CheckOutModal({
               <span style={{ fontWeight: "700", color: "#333" }}>₱{total.toLocaleString()}</span>
             </div>
 
-    
-
-  
-
-
-   
             {paidInFullAtCheckIn && (
               <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", fontSize: "0.9rem", marginTop: "4px" }}>
                 <span style={{ color: "#555" }}>Paid in Full at Check-In</span>
@@ -412,9 +411,10 @@ export default function CheckOutModal({
                   <label style={labelStyle}>Amount Received (₱)</label>
                   <input type="number" value={amountReceived} onChange={e => setAmountReceived(e.target.value)}
                     placeholder={`Remaining balance: ₱${remainingBalance.toLocaleString()}`}
-                    style={{ ...inputStyle, fontSize: "1rem", fontWeight: "700" }}
+                    style={{ ...inputStyle, fontSize: "1rem", fontWeight: "700", MozAppearance: "textfield" }}
                     onFocus={e => e.target.style.borderColor = "#e65100"}
                     onBlur={e => e.target.style.borderColor = "#e8e8e8"} />
+                  <style>{`input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }`}</style>
                 </div>
                 {change > 0 && (
                   <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -446,14 +446,13 @@ export default function CheckOutModal({
             )}
           </div>
 
-          {/* ── Action Buttons ── */}
           <div style={{ display: "flex", gap: "12px" }}>
             <button onClick={onClose}
               style={{ flex: 1, padding: "13px", background: "white", border: "2px solid #e0e0e0", borderRadius: "10px", cursor: "pointer", fontSize: "0.92rem", fontWeight: "600", color: "#666", fontFamily: "Arial,sans-serif" }}>
               Cancel
             </button>
-            <button onClick={onConfirm} disabled={processing || (!fullyPaid && !amountReceived)}
-              style={{ flex: 2, padding: "13px", background: processing ? "#aaa" : "#e65100", border: "none", borderRadius: "10px", cursor: processing ? "not-allowed" : "pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px", boxShadow: "0 4px 12px rgba(230,81,0,0.3)" }}>
+            <button onClick={onConfirm} disabled={isConfirmDisabled}
+              style={{ flex: 2, padding: "13px", background: isConfirmDisabled ? "#aaa" : "#e65100", border: "none", borderRadius: "10px", cursor: isConfirmDisabled ? "not-allowed" : "pointer", fontSize: "0.92rem", fontWeight: "700", color: "white", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px", boxShadow: isConfirmDisabled ? "none" : "0 4px 12px rgba(230,81,0,0.3)" }}>
               <RiLogoutBoxLine size={16} />
               {processing ? "Processing..." : "Confirm Check-Out & Mark Paid"}
             </button>
