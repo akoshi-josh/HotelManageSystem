@@ -99,19 +99,27 @@ export default function CheckIn({ user }) {
     const totalBill    = baseTotal + chargesTotal;
 
     const existingCharges = (() => { try { return JSON.parse(selected.additional_charges || "[]"); } catch { return []; } })();
-    const mergedCharges   = [
-      ...existingCharges,
-      ...(additionalCharges || []).map(c => ({ ...c, from_checkin: true })),
-    ];
+const mergedCharges = [
+  ...existingCharges,
+  ...(additionalCharges || [])
+    .filter(c => !existingCharges.some(ec => ec.id === c.id))
+    .map(c => ({ ...c, from_checkin: true })),
+];
 
-    await supabase.from("reservations").update({
-      status:             "checked_in",
-      payment_method:     payLater ? "pay_at_checkout" : paymentMethod,
-      amount_paid:        paidAmt,
-      pay_later:          payLater || isPartial,
-      total_amount:       totalBill,
-      additional_charges: JSON.stringify(mergedCharges),
-    }).eq("id", checkedId);
+const remainingAtCheckIn = Math.max(0, totalBill - paidAmt);
+
+console.log("DEBUG paidAmt:", paidAmt, "totalBill:", totalBill, "remaining:", remainingAtCheckIn);
+
+await supabase.from("reservations").update({
+  status:             "checked_in",
+  payment_method:     payLater ? "pay_at_checkout" : paymentMethod,
+  amount_paid:        paidAmt,
+  pay_later:          payLater || isPartial,
+  total_amount:       totalBill,
+  additional_charges: JSON.stringify(mergedCharges),
+  remaining_balance:  remainingAtCheckIn,
+  checkin_balance: remainingAtCheckIn,
+}).eq("id", checkedId);
 
     await supabase.from("rooms").update({ status: "occupied" }).eq("id", selected.room_id);
 

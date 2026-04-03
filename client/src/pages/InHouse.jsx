@@ -117,7 +117,7 @@ export default function InHouse({ highlightId }) {
 
   const today = new Date().toISOString().split("T")[0];
 
-  useEffect(() => { fetchGuests(); }, []); 
+  useEffect(() => { fetchGuests(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchGuests = async () => {
     setLoading(true);
@@ -134,42 +134,74 @@ export default function InHouse({ highlightId }) {
     try { return JSON.parse(res?.additional_charges || "[]"); } catch { return []; }
   };
 
-const calcTotal = (res) => {
-  const base = parseFloat(res.total_amount || 0);
-  const postCheckinCharges = getCharges(res)
-    .filter(c => !c.from_reservation && !c.from_checkin)
+  // Base = remaining_balance from DB (set at check-in, already accounts for downpayment).
+  // Then add only in-house charges added during the stay (not from_reservation).
+  const calcTotal = (res) => {
+    const base = parseFloat(res.remaining_balance ?? res.total_amount ?? 0);
+    const inHouse = getCharges(res)
+  .filter(c => !c.from_reservation && !c.from_checkin && !c.from_restaurant)
+  .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    return base + inHouse;
+  };
+
+  // Helper: recompute remaining_balance for a given res + its current charges list
+  // remaining_balance (from check-in) + all in-house charges added during stay
+const computeNewBalance = (res, chargesList) => {
+  const base    = parseFloat(res.remaining_balance ?? res.total_amount ?? 0);
+  const inHouse = chargesList
+    .filter(c => !c.from_reservation && !c.from_checkin && !c.from_restaurant)
     .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
-  const amountPaid = parseFloat(res.amount_paid || 0);
-  return base + postCheckinCharges - amountPaid;
+  return base + inHouse;
 };
 
   const nightsStayed = (checkIn) => Math.max(1, Math.floor((new Date() - new Date(checkIn)) / 86400000));
   const nightsLeft   = (checkOut) => checkOut ? Math.max(0, Math.ceil((new Date(checkOut) - new Date()) / 86400000)) : null;
 
-  const handleAddCharge = async () => {
-    if (!reqName.trim() || !reqAmt || !selected) return;
-    setSaving(true);
-    const existing = getCharges(selected);
-    const updated  = [...existing, { id: Date.now(), name: reqName.trim(), amount: parseFloat(reqAmt) }];
-    await supabase.from("reservations").update({ additional_charges: JSON.stringify(updated) }).eq("id", selected.id);
-    await logActivity({
-      action: `Added charge to Room ${selected.room_number}: ${reqName.trim()}`,
-      category: "charge",
-      details: `Guest: ${selected.guest_name} | Amount: ₱${parseFloat(reqAmt).toLocaleString()}`,
-      entity_type: "reservation",
-      entity_id: selected.id,
-    });
-    setSaving(false);
-    setReqName(""); setReqAmt("");
-    const { data } = await supabase.from("reservations").select("*, rooms(type, floor)").eq("id", selected.id).single();
-    setSelected(data);
-    fetchGuests();
-  };
+const handleAddCharge = async () => {
+  if (!reqName.trim() || !reqAmt || !selected) return;
+  setSaving(true);
 
+  // Always fetch fresh data from DB before adding to avoid stale state duplication
+  const { data: fresh } = await supabase
+    .from("reservations")
+    .select("*, rooms(type, floor)")
+    .eq("id", selected.id)
+    .single();
+
+ const existing = getCharges(fresh);  
+  const newCharge  = { id: Date.now(), name: reqName.trim(), amount: parseFloat(reqAmt) };
+  const updated    = [...existing, newCharge];
+  const newBalance = computeNewBalance(fresh, updated);
+
+  await supabase.from("reservations").update({
+    additional_charges: JSON.stringify(updated),
+    remaining_balance:  newBalance,
+  }).eq("id", selected.id);
+
+  await logActivity({
+    action:      `Added charge to Room ${selected.room_number}: ${reqName.trim()}`,
+    category:    "charge",
+    details:     `Guest: ${selected.guest_name} | Amount: ₱${parseFloat(reqAmt).toLocaleString()} | New Balance: ₱${newBalance.toLocaleString()}`,
+    entity_type: "reservation",
+    entity_id:   selected.id,
+  });
+
+  setSaving(false);
+  setReqName(""); setReqAmt("");
+  const { data } = await supabase.from("reservations").select("*, rooms(type, floor)").eq("id", selected.id).single();
+  setSelected(data);
+  fetchGuests();
+};
   const handleDeleteCharge = async (chargeId) => {
     if (!selected) return;
-    const updated = getCharges(selected).filter(c => c.id !== chargeId);
-    await supabase.from("reservations").update({ additional_charges: JSON.stringify(updated) }).eq("id", selected.id);
+    const updated    = getCharges(selected).filter(c => c.id !== chargeId);
+    const newBalance = computeNewBalance(selected, updated);
+
+    await supabase.from("reservations").update({
+      additional_charges: JSON.stringify(updated),
+      remaining_balance:  newBalance, 
+    }).eq("id", selected.id);
+
     const { data } = await supabase.from("reservations").select("*, rooms(type, floor)").eq("id", selected.id).single();
     setSelected(data);
     fetchGuests();

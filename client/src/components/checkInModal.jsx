@@ -72,7 +72,7 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
   const [fullyPaid,         setFullyPaid]         = useState(false);
   const [amountReceived,    setAmountReceived]    = useState("");
   const [additionalCharges, setAdditionalCharges] = useState(
-    allResCharges.filter(c => c.from_restaurant).map(c => ({ ...c }))
+    allResCharges.map(c => ({ ...c }))
   );
   const [showAddOns,   setShowAddOns]   = useState(false);
   const [sendingOrder, setSendingOrder] = useState(false);
@@ -172,7 +172,11 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
       }]);
     }
 
-    const paidAmt   = payLater ? reservationDownpayment : fullyPaid ? totalBill : amtReceived;
+const paidAmt = payLater
+  ? reservationDownpayment
+  : fullyPaid
+    ? totalBill
+    : reservationDownpayment + amtReceived;
     const isPartial = !payLater && !fullyPaid && paidAmt < totalBill && paidAmt > 0;
 
     setSendingOrder(false);
@@ -276,54 +280,27 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
                 </div>
               )}
 
-              {additionalCharges.length > 0 && (
-                <div style={{ marginBottom: "12px" }}>
-                  {additionalCharges.map(c => (
-                    <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px", background: c.from_restaurant ? "#fffbeb" : "#f0fdf4", border: `1px solid ${c.from_restaurant ? "#fde68a" : "#bbf7d0"}`, borderRadius: "8px", marginBottom: "5px" }}>
-                      <span style={{ fontSize: "0.85rem", color: "#333", display: "flex", alignItems: "center", gap: "6px" }}>
-                        {c.from_restaurant && <RiRestaurantLine size={12} color="#b45309" />}
-                        {c.name}
-                        {c.from_restaurant && (
-                          <span style={{ fontSize: ".68rem", background: "#fff3e0", color: "#e65100", padding: "1px 6px", borderRadius: "10px", fontWeight: "700" }}>
-                            → kitchen
-                          </span>
-                        )}
-                      </span>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <span style={{ fontWeight: "700", color: c.from_restaurant ? "#b45309" : "#07713c", fontSize: "0.85rem" }}>
-                          ₱{parseFloat(c.amount).toLocaleString()}
-                        </span>
-                        <button
-                          onClick={() => setAdditionalCharges(prev => prev.filter(x => x.id !== c.id))}
-                          style={{ background: "none", border: "none", cursor: "pointer", color: "#e53935", display: "flex", alignItems: "center", padding: "0 2px" }}
-                        >
-                          <RiDeleteBinLine size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
+{additionalCharges.map(c => (
+  <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", marginBottom: "5px" }}>
+    <span style={{ fontSize: "0.85rem", color: "#333" }}>
+      {c.name.replace(/^\[Restaurant\] /, "")}
+    </span>
+    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <span style={{ fontWeight: "700", color: "#07713c", fontSize: "0.85rem" }}>
+        ₱{parseFloat(c.amount).toLocaleString()}
+      </span>
+<button
+  onClick={() => setAdditionalCharges(prev => prev.filter(x => x.id !== c.id))}
+  style={{ background: "none", border: "none", cursor: "pointer", color: "#e53935", display: "flex", alignItems: "center", padding: "0 2px" }}
+>
+  <RiDeleteBinLine size={14} />
+</button>
+    </div>
+  </div>
+))}
               <AddChargeRow onAdd={c => setAdditionalCharges(prev => [...prev, c])} />
 
-                            {allResCharges.length > 0 && (
-              <div style={{ marginTop: "10px", borderTop: "1px dashed #e0e0e0", paddingTop: "10px" }}>
-                <div style={{ fontSize: "0.72rem", fontWeight: "700", color: "#888", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.4px" }}>
-                  Charges from Reservation
-                </div>
-                {allResCharges.map(c => (
-                  <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.83rem", color: "#555", padding: "4px 0", borderBottom: "1px dashed #f0f0f0" }}>
-                    <span>• {c.name}</span>
-                    <span style={{ fontWeight: "600", color: "#07713c" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
-                  </div>
-                ))}
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", fontWeight: "700", marginTop: "8px", paddingTop: "6px", borderTop: "1px solid #e0e0e0" }}>
-                  <span style={{ color: "#333" }}>Reservation Total (Room + Charges)</span>
-                  <span style={{ color: "#07713c" }}>₱{baseTotal.toLocaleString()}</span>
-                </div>
-              </div>
-            )}
+
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 14px", marginTop: "14px", background: "#fff3e0", border: "1.5px solid #ffb74d", borderRadius: "10px" }}>
                 <div>
