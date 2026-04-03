@@ -134,22 +134,20 @@ export default function InHouse({ highlightId }) {
     try { return JSON.parse(res?.additional_charges || "[]"); } catch { return []; }
   };
 
-  // Base = remaining_balance from DB (set at check-in, already accounts for downpayment).
-  // Then add only in-house charges added during the stay (not from_reservation).
+
   const calcTotal = (res) => {
-    const base = parseFloat(res.remaining_balance ?? res.total_amount ?? 0);
-    const inHouse = getCharges(res)
-  .filter(c => !c.from_reservation && !c.from_checkin && !c.from_restaurant)
+    const base = parseFloat((res.checkin_balance > 0 ? res.checkin_balance : null) ?? res.remaining_balance ?? res.total_amount ?? 0);
+const inHouse = getCharges(res)
+ .filter(c => !c.from_reservation)
   .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     return base + inHouse;
   };
 
-  // Helper: recompute remaining_balance for a given res + its current charges list
-  // remaining_balance (from check-in) + all in-house charges added during stay
+
 const computeNewBalance = (res, chargesList) => {
-  const base    = parseFloat(res.remaining_balance ?? res.total_amount ?? 0);
+ const base = parseFloat((res.checkin_balance > 0 ? res.checkin_balance : null) ?? res.remaining_balance ?? res.total_amount ?? 0);
   const inHouse = chargesList
-    .filter(c => !c.from_reservation && !c.from_checkin && !c.from_restaurant)
+   .filter(c => !c.from_reservation)
     .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
   return base + inHouse;
 };
@@ -161,7 +159,7 @@ const handleAddCharge = async () => {
   if (!reqName.trim() || !reqAmt || !selected) return;
   setSaving(true);
 
-  // Always fetch fresh data from DB before adding to avoid stale state duplication
+
   const { data: fresh } = await supabase
     .from("reservations")
     .select("*, rooms(type, floor)")

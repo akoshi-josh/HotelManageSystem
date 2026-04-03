@@ -95,7 +95,9 @@ export default function CheckIn({ user }) {
     setProcessing(true);
     const checkedId    = selected.id;
     const baseTotal    = parseFloat(selected?.total_amount || 0);
-    const chargesTotal = (additionalCharges || []).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    const chargesTotal = (additionalCharges || [])
+  .filter(c => !c.from_reservation)
+  .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     const totalBill    = baseTotal + chargesTotal;
 
     const existingCharges = (() => { try { return JSON.parse(selected.additional_charges || "[]"); } catch { return []; } })();
@@ -106,7 +108,9 @@ const mergedCharges = [
     .map(c => ({ ...c, from_checkin: true })),
 ];
 
-const remainingAtCheckIn = Math.max(0, totalBill - paidAmt);
+const checkinChargesTotal = (additionalCharges || [])
+
+const remainingAtCheckIn = Math.max(0, baseTotal - paidAmt);
 
 console.log("DEBUG paidAmt:", paidAmt, "totalBill:", totalBill, "remaining:", remainingAtCheckIn);
 
@@ -118,7 +122,7 @@ await supabase.from("reservations").update({
   total_amount:       totalBill,
   additional_charges: JSON.stringify(mergedCharges),
   remaining_balance:  remainingAtCheckIn,
-  checkin_balance: remainingAtCheckIn,
+checkin_balance: Math.max(0, baseTotal - paidAmt),
 }).eq("id", checkedId);
 
     await supabase.from("rooms").update({ status: "occupied" }).eq("id", selected.room_id);

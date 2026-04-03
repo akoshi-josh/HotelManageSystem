@@ -33,17 +33,17 @@ export default function CheckOutModal({
   if (!selected) return null;
 
 
-  const roomRate    = parseFloat(selected?.total_amount || 0);
+const roomRate = parseFloat(selected?.total_amount || 0);
   const extraNow    = parseFloat(extraCharges || 0);
 
-  const inHouseTotal = getAdditionalCharges(selected)
-    .filter(c => !c.from_reservation)
-    .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+const inHouseTotal = getAdditionalCharges(selected)
+  .filter(c => !c.from_reservation)
+  .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
 
   const inspectionTotal = getInspectionCharges(selected)
     .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
 
-  const grandTotal = roomRate + inHouseTotal + inspectionTotal + extraNow;
+const grandTotal = parseFloat(selected?.remaining_balance ?? selected?.total_amount ?? 0) + inspectionTotal + extraNow;
 
   const reservationDownpayment = parseFloat(selected?.reservation_downpayment || 0);
   const checkinPayment         = parseFloat(selected?.amount_paid || 0);
@@ -57,9 +57,7 @@ export default function CheckOutModal({
 
     return checkinPayment;
   })();
-
-  
-  const remainingBalance = Math.max(0, grandTotal - totalPaid);
+const remainingBalance = grandTotal;
 
   const amtGiven = parseFloat(amountReceived || 0);
   const change   = fullyPaid ? 0 : Math.max(0, amtGiven - remainingBalance);
@@ -73,8 +71,6 @@ export default function CheckOutModal({
 
 
   const paidInFullAtCheckIn = !selected?.pay_later && checkinPayment >= roomRate;
-  
-
 
   const partialAtCheckIn = !selected?.pay_later && checkinPayment > 0 && checkinPayment < roomRate;
 
@@ -107,7 +103,7 @@ export default function CheckOutModal({
             </div>
           )}
 
-          {/* ── Reservation Summary ── */}
+        
           <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
             <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "5px" }}>
               <RiUserLine size={13} /> Reservation Summary
@@ -129,7 +125,7 @@ export default function CheckOutModal({
             </div>
           </div>
 
-          {/* ── Extra Charges at Checkout ── */}
+       
           <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
             <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px" }}>
               Extra Charges at Check-Out (Optional)
@@ -152,7 +148,7 @@ export default function CheckOutModal({
             </div>
           </div>
 
-          {/* ── Payment Method ── */}
+   
           <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
             <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "5px" }}>
               <RiMoneyDollarCircleLine size={13} /> Payment Method
@@ -170,7 +166,7 @@ export default function CheckOutModal({
             </div>
           </div>
 
-          {/* ── Guest Notes ── */}
+          
           {selected?.notes && (
             <div style={{ background: "#fffde7", border: "1px solid #fff176", borderRadius: "10px", padding: "10px 14px", marginBottom: "16px", display: "flex", gap: "8px", alignItems: "flex-start", fontSize: "0.83rem", color: "#555" }}>
               <RiStickyNoteLine size={14} color="#f59e0b" style={{ flexShrink: 0, marginTop: "1px" }} />
@@ -178,7 +174,7 @@ export default function CheckOutModal({
             </div>
           )}
 
-          {/* ── Damage ── */}
+         
           {selected?.inspection_status === "has_damage" && (
             <div style={{ background: "#fce4ec", border: "1.5px solid #ef9a9a", borderRadius: "10px", padding: "14px 16px", marginBottom: "16px" }}>
               <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" }}>
@@ -243,13 +239,13 @@ export default function CheckOutModal({
             </div>
           )}
 
-          {/* ── Bill Breakdown ── */}
+  
           <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "16px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
             <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px" }}>
               Bill Breakdown
             </div>
 
-            {/* Stay-shortened refund banner */}
+
             {selected?.refund_amount > 0 && selected?.original_checkout && (
               <div style={{ background: "#fff8e1", border: "1.5px solid #ffe082", borderRadius: "10px", padding: "14px 16px", marginBottom: "14px" }}>
                 <div style={{ fontSize: ".7rem", fontWeight: 700, color: "#f57f17", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>
@@ -271,15 +267,13 @@ export default function CheckOutModal({
               </div>
             )}
 
-            {/* ── Charges rows ── */}
 
-            {/* Room rate */}
             <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
               <span style={{ color: "#555" }}>Room Rate</span>
               <span style={{ fontWeight: "600", color: "#333" }}>₱{roomRate.toLocaleString()}</span>
             </div>
 
-            {/* Reservation add-ons included in room rate — display only */}
+         
             {getAdditionalCharges(selected).filter(c => c.from_reservation).length > 0 && (
               <div style={{ paddingBottom: "4px" }}>
                 {getAdditionalCharges(selected).filter(c => c.from_reservation).map(c => (
@@ -291,7 +285,7 @@ export default function CheckOutModal({
               </div>
             )}
 
-            {/* In-house charges during stay */}
+          
             {inHouseTotal > 0 && (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
@@ -307,7 +301,7 @@ export default function CheckOutModal({
               </>
             )}
 
-            {/* Inspection / damage */}
+         
             {inspectionTotal > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
                 <span style={{ color: "#c62828", fontWeight: "600" }}>Damage / Inspection Charges</span>
@@ -315,7 +309,7 @@ export default function CheckOutModal({
               </div>
             )}
 
-            {/* Extra at checkout */}
+          
             {extraNow > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
                 <span style={{ color: "#555" }}>Extra at Check-Out{extraNote ? ` (${extraNote})` : ""}</span>
@@ -323,46 +317,18 @@ export default function CheckOutModal({
               </div>
             )}
 
-            {/* Grand total */}
+         
             <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 6px", borderTop: "2px solid #eee", marginTop: "4px", fontSize: "0.95rem" }}>
               <span style={{ fontWeight: "700", color: "#333" }}>Grand Total</span>
               <span style={{ fontWeight: "700", color: "#333" }}>₱{grandTotal.toLocaleString()}</span>
             </div>
 
-            {/* ── Payment deductions ── */}
+    
 
-            {/* 30% reservation downpayment */}
-            {hasReservationDownpayment && (
-              <div style={{ background: "#fff8e1", border: "1.5px solid #ffe082", borderRadius: "10px", padding: "13px 15px", marginTop: "10px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                  <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#f57f17", textTransform: "uppercase", letterSpacing: "0.4px" }}>
-                    ⚡ 30% Downpayment — paid at reservation
-                  </div>
-                  <span style={{ fontWeight: "700", color: "#4caf50", fontSize: "0.95rem" }}>
-                    −₱{downpaymentAmount.toLocaleString()}
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
-                  {[
-                    ["Room Rate",     `₱${roomRate.toLocaleString()}`],
-                    ["30% Paid",      `₱${downpaymentAmount.toLocaleString()}`],
-                    ["Room Balance",  `₱${Math.max(0, roomRate - downpaymentAmount).toLocaleString()}`],
-                  ].map(([lbl, val]) => (
-                    <div key={lbl} style={{ background: "white", borderRadius: "7px", padding: "7px 10px", textAlign: "center" }}>
-                      <div style={{ fontSize: "0.63rem", color: "#aaa", fontWeight: "700", textTransform: "uppercase", marginBottom: "2px" }}>{lbl}</div>
-                      <div style={{ fontSize: "0.85rem", fontWeight: "700", color: lbl === "Room Balance" ? "#e65100" : "#555" }}>{val}</div>
-                    </div>
-                  ))}
-                </div>
-                {(inHouseTotal > 0 || inspectionTotal > 0 || extraNow > 0) && (
-                  <div style={{ marginTop: "8px", fontSize: "0.76rem", color: "#888", fontStyle: "italic", textAlign: "center" }}>
-                    + ₱{(inHouseTotal + inspectionTotal + extraNow).toLocaleString()} additional charges added to remaining balance
-                  </div>
-                )}
-              </div>
-            )}
+  
 
-            {/* Full payment at check-in */}
+
+   
             {paidInFullAtCheckIn && (
               <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", fontSize: "0.9rem", marginTop: "4px" }}>
                 <span style={{ color: "#555" }}>Paid in Full at Check-In</span>
@@ -370,7 +336,7 @@ export default function CheckOutModal({
               </div>
             )}
 
-            {/* Partial at check-in (not a downpayment scenario) */}
+          
             {partialAtCheckIn && (
               <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", fontSize: "0.9rem", marginTop: "4px" }}>
                 <span style={{ color: "#555" }}>Partial Payment at Check-In</span>
@@ -378,14 +344,14 @@ export default function CheckOutModal({
               </div>
             )}
 
-            {/* Nothing collected yet */}
+    
             {!hasReservationDownpayment && !paidInFullAtCheckIn && !partialAtCheckIn && totalPaid === 0 && (
               <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "8px", padding: "8px 12px", marginTop: "8px", fontSize: "0.8rem", color: "#f57f17", fontWeight: "600" }}>
                 No payment collected yet — full amount due at check-out.
               </div>
             )}
 
-            {/* ── Remaining Balance Due ── */}
+           
             <div style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
               padding: "14px 16px", marginTop: "12px",
@@ -412,7 +378,7 @@ export default function CheckOutModal({
             </div>
           </div>
 
-          {/* ── Collect Payment ── */}
+     
           <div style={{ background: "white", borderRadius: "12px", padding: "16px 20px", marginBottom: "20px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
             <div style={{ fontSize: "0.78rem", fontWeight: "700", color: "#e65100", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "5px" }}>
               <RiMoneyDollarCircleLine size={13} /> Collect Payment
