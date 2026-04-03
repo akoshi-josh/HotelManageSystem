@@ -32,18 +32,27 @@ export default function CheckOutModal({
 }) {
   if (!selected) return null;
 
-
-const roomRate = parseFloat(selected?.total_amount || 0);
+  const resChargesTotal = getAdditionalCharges(selected)
+  .filter(c => c.from_reservation)
+  .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+  
+  const roomRate = parseFloat(selected?.total_amount || 0);
+  
   const extraNow    = parseFloat(extraCharges || 0);
 
-const inHouseTotal = getAdditionalCharges(selected)
+  const inHouseTotal = getAdditionalCharges(selected)
   .filter(c => !c.from_reservation)
   .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+
 
   const inspectionTotal = getInspectionCharges(selected)
     .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
 
-const grandTotal = parseFloat(selected?.remaining_balance ?? selected?.total_amount ?? 0) + inspectionTotal + extraNow;
+    const displayRoomRate = roomRate - inHouseTotal - extraCharges - inspectionTotal - extraNow;  
+
+  const grandTotal = parseFloat(selected?.remaining_balance ?? selected?.total_amount ?? 0) + inspectionTotal + extraNow;
+
+  const total = parseFloat(selected?.total_amount || 0);
 
   const reservationDownpayment = parseFloat(selected?.reservation_downpayment || 0);
   const checkinPayment         = parseFloat(selected?.amount_paid || 0);
@@ -57,7 +66,7 @@ const grandTotal = parseFloat(selected?.remaining_balance ?? selected?.total_amo
 
     return checkinPayment;
   })();
-const remainingBalance = grandTotal;
+  const remainingBalance = grandTotal;
 
   const amtGiven = parseFloat(amountReceived || 0);
   const change   = fullyPaid ? 0 : Math.max(0, amtGiven - remainingBalance);
@@ -66,9 +75,6 @@ const remainingBalance = grandTotal;
   const hasReservationDownpayment =
     reservationDownpayment > 0 ||
     (selected?.pay_later && checkinPayment > 0 && checkinPayment < roomRate);
-
-  const downpaymentAmount = reservationDownpayment > 0 ? reservationDownpayment : (hasReservationDownpayment ? checkinPayment : 0);
-
 
   const paidInFullAtCheckIn = !selected?.pay_later && checkinPayment >= roomRate;
 
@@ -270,7 +276,7 @@ const remainingBalance = grandTotal;
 
             <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px dashed #f0f0f0", fontSize: "0.9rem" }}>
               <span style={{ color: "#555" }}>Room Rate</span>
-              <span style={{ fontWeight: "600", color: "#333" }}>₱{roomRate.toLocaleString()}</span>
+              <span style={{ fontWeight: "600", color: "#333" }}>₱{displayRoomRate.toLocaleString()}</span>
             </div>
 
          
@@ -319,8 +325,8 @@ const remainingBalance = grandTotal;
 
          
             <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 6px", borderTop: "2px solid #eee", marginTop: "4px", fontSize: "0.95rem" }}>
-              <span style={{ fontWeight: "700", color: "#333" }}>Grand Total</span>
-              <span style={{ fontWeight: "700", color: "#333" }}>₱{grandTotal.toLocaleString()}</span>
+              <span style={{ fontWeight: "700", color: "#333" }}>Total</span>
+              <span style={{ fontWeight: "700", color: "#333" }}>₱{total.toLocaleString()}</span>
             </div>
 
     

@@ -117,7 +117,7 @@ export default function InHouse({ highlightId }) {
 
   const today = new Date().toISOString().split("T")[0];
 
-  useEffect(() => { fetchGuests(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchGuests(); }, []); 
 
   const fetchGuests = async () => {
     setLoading(true);
