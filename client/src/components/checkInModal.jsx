@@ -95,6 +95,7 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
   const totalBill    = baseTotal + chargesTotal;
   const allResChargesSum = allResCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
   const roomrate = baseTotal - allResChargesSum;
+  const grandTotal = baseTotal + chargesTotal;
 
   const remainingBalance = Math.max(0, totalBill - reservationDownpayment);
   const amtReceived      = parseFloat(amountReceived || 0);
@@ -239,9 +240,9 @@ const paidAmt = payLater
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
                     {[
-                      ["Grand Total",   `₱${baseTotal.toLocaleString()}`],
+                      ["Grand Total",   `₱${grandTotal.toLocaleString()}`],
                       ["Paid (30%)",  `₱${reservationDownpayment.toLocaleString()}`],
-                      ["Balance Due", `₱${Math.max(0, baseTotal - reservationDownpayment).toLocaleString()}`],
+                      ["Balance Due", `₱${Math.max(0, baseTotal - reservationDownpayment + chargesTotal).toLocaleString()}`],
                     ].map(([lbl, val]) => (
                       <div key={lbl} style={{ background: "white", borderRadius: "7px", padding: "7px 10px", textAlign: "center" }}>
                         <div style={{ fontSize: "0.65rem", color: "#aaa", fontWeight: "700", textTransform: "uppercase", marginBottom: "2px" }}>{lbl}</div>

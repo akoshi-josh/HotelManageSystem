@@ -48,7 +48,7 @@ export default function CheckOutModal({
   const inspectionTotal = getInspectionCharges(selected)
     .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
 
-    const displayRoomRate = roomRate - inHouseTotal - extraCharges - inspectionTotal - extraNow;  
+  const displayRoomRate = roomRate - inHouseTotal - resChargesTotal;
 
   const grandTotal = parseFloat(selected?.remaining_balance ?? selected?.total_amount ?? 0) + inspectionTotal + extraNow;
 

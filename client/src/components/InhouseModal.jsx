@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   RiUserLine, RiCalendarLine, RiAddCircleLine,
   RiMoneyDollarCircleLine, RiStickyNoteLine, RiTimeLine,
   RiCheckboxCircleLine, RiDeleteBinLine, RiLoginBoxLine,
-  RiCalendar2Line, RiSaveLine,
+  RiCalendar2Line, RiSaveLine, RiRestaurantLine,
 } from "react-icons/ri";
+import RestaurantAddOnsModal from "./RestaurantAddOnsModal";
 
 export default function InhouseModal({
   selected,
@@ -29,10 +30,14 @@ export default function InhouseModal({
   refundInfo,
   refundConfirmed,
   setRefundConfirmed,
+  
 }) {
+
+  const [showRestaurant, setShowRestaurant] = useState(false);
   if (!selected) return null;
 
   return (
+    <>
     <div className="mo" onClick={onClose}>
       <div className="mb" style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
 
@@ -166,9 +171,16 @@ export default function InhouseModal({
 
             
               <div className="msec" style={{ flex: 1 }}>
-                <div className="msec-title"><RiAddCircleLine size={13} />Additional Charges</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                  <div className="msec-title" style={{ marginBottom: 0 }}><RiAddCircleLine size={13} />Additional Charges</div>
+                  <button
+                    onClick={() => setShowRestaurant(true)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", background: "#fff8e1", border: "1.5px solid #f59e0b", borderRadius: "8px", cursor: "pointer", fontSize: "0.76rem", fontWeight: "700", color: "#b45309", fontFamily: "Arial,sans-serif" }}
+                  >
+                    <RiRestaurantLine size={13} /> Order from Restaurant
+                  </button>
+                </div>
 
-               
 {charges.length > 0 && (
   <div style={{ marginBottom: "10px", maxHeight: "220px", overflowY: "auto" }}>
     <div style={{ fontSize: ".66rem", fontWeight: "700", color: "#07713c", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "5px" }}>
@@ -179,15 +191,11 @@ export default function InhouseModal({
         <span className="charge-name">{c.name.replace(/^\[Restaurant\] /, "")}</span>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span className="charge-amt">₱{parseFloat(c.amount).toLocaleString()}</span>
-
         </div>
       </div>
     ))}
   </div>
 )}
-
-            
- 
 
                 <div className="add-row">
                   <input className="add-fi" value={reqName} onChange={e => setReqName(e.target.value)}
@@ -295,5 +303,22 @@ export default function InhouseModal({
         </div>
       </div>
     </div>
+
+    {showRestaurant && (
+      <RestaurantAddOnsModal
+        reservationId={selected?.id}
+        guestName={selected?.guest_name}
+        roomNumber={selected?.room_number}
+        isCheckedIn={true}
+        onClose={() => setShowRestaurant(false)}
+        onConfirm={(charges) => {
+          charges.forEach(c => {
+            onAddCharge({ name: c.name, amount: c.amount });
+          });
+          setShowRestaurant(false);
+        }}
+      />
+    )}
+    </>
   );
 }

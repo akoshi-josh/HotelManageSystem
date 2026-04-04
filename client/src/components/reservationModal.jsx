@@ -66,6 +66,10 @@ export default function ReservationModal({
 
   const restaurantChargesCount = (form.additional_charges || []).filter(c => c.from_restaurant).length;
 
+  // Additional charges total (for display only — does not affect any saved logic)
+  const additionalChargesTotal = (form.additional_charges || [])
+    .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+
   const handleSave = async () => {
     await onSave();
 
@@ -281,22 +285,38 @@ export default function ReservationModal({
               </div>
 
               {selectedRoom && (
-                <div style={{ marginTop: "14px", background: "#1a3c1a", borderRadius: "10px", padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ marginTop: "14px", background: "#1a3c1a", borderRadius: "10px", padding: "14px 18px" }}>
                   {form.check_out ? (
-                    <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.88rem" }}>
-                      {calcNights()} night{calcNights() !== 1 ? "s" : ""} × ₱{parseFloat(selectedRoom.price).toLocaleString()}
-                    </div>
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.88rem" }}>
+                          {calcNights()} night{calcNights() !== 1 ? "s" : ""} × ₱{parseFloat(selectedRoom.price).toLocaleString()}
+                        </div>
+                        <div style={{ color: "white", fontWeight: "700", fontSize: "1.1rem" }}>
+                          Room Total: ₱{calcRoomOnly().toLocaleString()}
+                        </div>
+                      </div>
+                      {additionalChargesTotal > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid rgba(255,255,255,0.15)" }}>
+                          <div style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.82rem" }}>
+                            Additional charges
+                          </div>
+                          <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.9rem", fontWeight: "600" }}>
+                            +₱{additionalChargesTotal.toLocaleString()}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   ) : (
-                    <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.88rem" }}>
-                      Open Stay · ₱{parseFloat(selectedRoom.price).toLocaleString()}/night
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.88rem" }}>
+                        Open Stay · ₱{parseFloat(selectedRoom.price).toLocaleString()}/night
+                      </div>
+                      <div style={{ color: "white", fontWeight: "700", fontSize: "1.1rem" }}>
+                        Per night: ₱{parseFloat(selectedRoom.price).toLocaleString()}
+                      </div>
                     </div>
                   )}
-                  <div style={{ color: "white", fontWeight: "700", fontSize: "1.1rem" }}>
-                    {form.check_out
-                      ? `Total: ₱${calcTotal().toLocaleString()}`
-                      : `Per night: ₱${parseFloat(selectedRoom.price).toLocaleString()}`
-                    }
-                  </div>
                 </div>
               )}
 
@@ -330,8 +350,7 @@ export default function ReservationModal({
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px" }}>
                         {[
                           ["Room Rate", `₱${calcRoomOnly().toLocaleString()}`],
-                          ["Additional Charges", `₱${(calcTotal() - calcRoomOnly()).toLocaleString()}`],
-                          ["Grand Total", `₱${calcTotal().toLocaleString()}`],
+                          ["Additional Charges", `₱${additionalChargesTotal.toLocaleString()}`],
                         ].map(([lbl, val]) => (
                           <div key={lbl} style={{ background: "white", borderRadius: "8px", padding: "8px 12px" }}>
                             <div style={{ fontSize: "0.68rem", color: "#aaa", fontWeight: "700", textTransform: "uppercase", marginBottom: "3px" }}>{lbl}</div>
