@@ -22,6 +22,7 @@ export default function InhouseModal({
   saving,
   onAddCharge,
   onDeleteCharge,
+  onAddChargeObject, 
  
   extDate,
   onExtDateChange,
@@ -170,7 +171,7 @@ export default function InhouseModal({
             <div className="mbody-right">
 
             
-              <div className="msec" style={{ flex: 1 }}>
+              <div className="msec" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
                   <div className="msec-title" style={{ marginBottom: 0 }}><RiAddCircleLine size={13} />Additional Charges</div>
                   <button
@@ -182,7 +183,7 @@ export default function InhouseModal({
                 </div>
 
 {charges.length > 0 && (
-  <div style={{ marginBottom: "10px", maxHeight: "220px", overflowY: "auto" }}>
+  <div style={{ marginBottom: "10px", flex: 1, overflowY: "auto" }}>
     <div style={{ fontSize: ".66rem", fontWeight: "700", color: "#07713c", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "5px" }}>
       Guest Orders & Requests
     </div>
@@ -197,7 +198,7 @@ export default function InhouseModal({
   </div>
 )}
 
-                <div className="add-row">
+                <div className="add-row" style={{ marginTop: "auto" }}>
                   <input className="add-fi" value={reqName} onChange={e => setReqName(e.target.value)}
                     placeholder="Description..." onKeyDown={e => e.key === "Enter" && onAddCharge()} />
                   <input type="number" className="add-fi" style={{ flex: "0 0 90px" }} value={reqAmt}
@@ -312,9 +313,9 @@ export default function InhouseModal({
         isCheckedIn={true}
         onClose={() => setShowRestaurant(false)}
         onConfirm={(charges) => {
-          charges.forEach(c => {
-            onAddCharge({ name: c.name, amount: c.amount });
-          });
+charges.forEach(c => {
+  onAddChargeObject({ name: c.name, amount: c.amount, from_restaurant: true });
+});
           setShowRestaurant(false);
         }}
       />

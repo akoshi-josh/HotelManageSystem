@@ -234,6 +234,31 @@ const handleAddCharge = async () => {
     if (!val || !selected?.check_in) { setRefundInfo(null); return; }
     setRefundInfo(calcPreview(val));
   };
+  const handleAddChargeObject = async (chargeObj) => {
+  if (!chargeObj?.name || !chargeObj?.amount || !selected) return;
+  setSaving(true);
+
+  const { data: fresh } = await supabase
+    .from("reservations")
+    .select("*, rooms(type, floor)")
+    .eq("id", selected.id)
+    .single();
+
+  const existing   = getCharges(fresh);
+  const newCharge  = { id: Date.now(), name: chargeObj.name, amount: parseFloat(chargeObj.amount), from_restaurant: chargeObj.from_restaurant || false };
+  const updated    = [...existing, newCharge];
+  const newBalance = computeNewBalance(fresh, updated);
+
+  await supabase.from("reservations").update({
+    additional_charges: JSON.stringify(updated),
+    remaining_balance:  newBalance,
+  }).eq("id", selected.id);
+
+  setSaving(false);
+  const { data } = await supabase.from("reservations").select("*, rooms(type, floor)").eq("id", selected.id).single();
+  setSelected(data);
+  fetchGuests();
+};
 
   const handleSaveDateChange = async () => {
     if (!selected || !extDate) return;
@@ -374,6 +399,7 @@ const handleAddCharge = async () => {
           setReqAmt={setReqAmt}
           saving={saving}
           onAddCharge={handleAddCharge}
+          onAddChargeObject={handleAddChargeObject}
           onDeleteCharge={handleDeleteCharge}
           extDate={extDate}
           onExtDateChange={handleExtDateChange}
