@@ -115,15 +115,15 @@ export default function InhouseModal({
                     </div>
                   </div>
                   <div className="info-cell" style={{ gridColumn: "span 2" }}>
-                    <div className="info-lbl"><RiMoneyDollarCircleLine size={10} />Remaining Balance</div>
-                    <div className="info-val" style={{ fontSize: "1.1rem", color: "#07713c" }}>
-                      ₱{parseFloat(selected.remaining_balance ?? selected.total_amount ?? 0).toLocaleString()}
-                    </div>
-                    {selected.remaining_balance != null && (
-                      <div style={{ fontSize: ".68rem", color: "#8a9a8a", marginTop: "2px" }}>
-                        from check-in · room rate ₱{parseFloat(selected.total_amount || 0).toLocaleString()}
-                      </div>
-                    )}
+                  <div className="info-lbl"><RiMoneyDollarCircleLine size={10} />Room Rate</div>
+                  <div className="info-val" style={{ fontSize: "1.1rem", color: "#07713c" }}>
+                    {(() => {
+                      const allCharges = (() => { try { return JSON.parse(selected.additional_charges || "[]"); } catch { return []; } })();
+                      const extraSum = allCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+                      const roomRateOnly = Math.max(0, parseFloat(selected.total_amount || 0) - extraSum);
+                      return `₱${roomRateOnly.toLocaleString()}`;
+                    })()}
+                  </div>
                   </div>
                 </div>
 
