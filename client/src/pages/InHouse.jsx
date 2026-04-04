@@ -12,18 +12,15 @@ const CSS = `
 .ih-hdr  { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
 .ih-title { font-size:1.1rem; font-weight:700; color:#07713c; margin:0 0 2px; }
 .ih-sub   { font-size:.83rem; color:#8a9a8a; }
-
 .sc-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px; }
 .sc  { border-radius:14px; padding:18px 20px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
 .sc-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
 .sc-lbl { font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
 .sc-val { font-size:1.9rem; font-weight:700; color:#1a1a1a; }
-
 .fbar { background:#fff; border-radius:14px; padding:13px 20px; margin-bottom:16px; border:1px solid #e4ebe4; }
 .finput { width:100%; padding:9px 13px; border:1.5px solid #ccdacc; border-radius:9px; font-size:.88rem; font-family:Arial,sans-serif; color:#333; outline:none; }
 .finput:focus { border-color:#07713c; box-shadow:0 0 0 3px rgba(7,113,60,.1); }
 .finput::placeholder { color:#a8b8a8; font-style:italic; }
-
 .ih-table { background:#fff; border-radius:14px; border:1px solid #e4ebe4; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.04); }
 .ih-thead { display:grid; grid-template-columns:80px 1.8fr 60px 110px 110px 110px 90px; padding:9px 20px; background:#f8faf8; border-bottom:2px solid #eef4ee; }
 .ih-th { font-size:.64rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:#7a9a7a; }
@@ -44,8 +41,6 @@ const CSS = `
 .view-btn:hover { background:#05592f; }
 .empty { text-align:center; padding:60px; color:#9aaa9a; font-size:.9rem; }
 .empty-ico { width:56px; height:56px; border-radius:50%; background:#ecfdf5; display:flex; align-items:center; justify-content:center; margin:0 auto 14px; }
-
-/* MODAL */
 .mo { position:fixed; inset:0; z-index:999; display:flex; align-items:flex-start; justify-content:center; background:rgba(0,0,0,.55); backdrop-filter:blur(3px); padding:16px; overflow-y:auto; }
 .mb { background:#f4f6f0; border-radius:20px; width:100%; max-width:780px; display:flex; flex-direction:column; box-shadow:0 24px 80px rgba(0,0,0,.28); margin:auto; }
 .mh { padding:22px 28px; border-radius:20px 20px 0 0; background:linear-gradient(135deg,#07713c,#0a9150); display:flex; justify-content:space-between; align-items:center; position:relative; }
@@ -103,27 +98,27 @@ const CSS = `
 `;
 
 export default function InHouse({ highlightId }) {
-  const [guests,   setGuests]   = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [search,   setSearch]   = useState("");
-  const [selected, setSelected] = useState(null);
-  const [reqName,  setReqName]  = useState("");
-  const [reqAmt,   setReqAmt]   = useState("");
-  const [saving,   setSaving]   = useState(false);
-  const [extending,  setExtending]  = useState(false);
-  const [extDate,    setExtDate]    = useState("");
-  const [refundInfo, setRefundInfo] = useState(null);
+  const [guests,          setGuests]          = useState([]);
+  const [loading,         setLoading]         = useState(true);
+  const [search,          setSearch]          = useState("");
+  const [selected,        setSelected]        = useState(null);
+  const [reqName,         setReqName]         = useState("");
+  const [reqAmt,          setReqAmt]          = useState("");
+  const [saving,          setSaving]          = useState(false);
+  const [extending,       setExtending]       = useState(false);
+  const [extDate,         setExtDate]         = useState("");
+  const [refundInfo,      setRefundInfo]      = useState(null);
   const [refundConfirmed, setRefundConfirmed] = useState(false);
 
   const today = new Date().toISOString().split("T")[0];
 
-  useEffect(() => { fetchGuests(); }, []); 
+  useEffect(() => { fetchGuests(); }, []);
 
   const fetchGuests = async () => {
     setLoading(true);
     const { data } = await supabase
       .from("reservations")
-      .select("*, rooms(type, floor)")
+      .select("*, rooms(type, floor, price)")
       .eq("status", "checked_in")
       .order("check_in");
     setGuests((data || []).filter(r => r.status === "checked_in"));
@@ -134,62 +129,56 @@ export default function InHouse({ highlightId }) {
     try { return JSON.parse(res?.additional_charges || "[]"); } catch { return []; }
   };
 
-
   const calcTotal = (res) => {
-    const base = parseFloat((res.checkin_balance > 0 ? res.checkin_balance : null) ?? res.remaining_balance ?? res.total_amount ?? 0);
-const inHouse = getCharges(res)
- .filter(c => !c.from_reservation)
-  .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
-    return base + inHouse;
+    return parseFloat(res.remaining_balance ?? 0);
   };
 
-
-const computeNewBalance = (res, chargesList) => {
- const base = parseFloat((res.checkin_balance > 0 ? res.checkin_balance : null) ?? res.remaining_balance ?? res.total_amount ?? 0);
-  const inHouse = chargesList
-   .filter(c => !c.from_reservation)
-    .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
-  return base + inHouse;
-};
+  const computeNewBalance = (res, chargesList) => {
+    const checkinBase = parseFloat(res.checkin_balance ?? res.remaining_balance ?? 0);
+    const postCheckin = chargesList
+      .filter(c => !c.from_reservation && !c.from_checkin)
+      .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+    return parseFloat((checkinBase + postCheckin).toFixed(2));
+  };
 
   const nightsStayed = (checkIn) => Math.max(1, Math.floor((new Date() - new Date(checkIn)) / 86400000));
   const nightsLeft   = (checkOut) => checkOut ? Math.max(0, Math.ceil((new Date(checkOut) - new Date()) / 86400000)) : null;
 
-const handleAddCharge = async () => {
-  if (!reqName.trim() || !reqAmt || !selected) return;
-  setSaving(true);
+  const handleAddCharge = async () => {
+    if (!reqName.trim() || !reqAmt || !selected) return;
+    setSaving(true);
 
+    const { data: fresh } = await supabase
+      .from("reservations")
+      .select("*, rooms(type, floor, price)")
+      .eq("id", selected.id)
+      .single();
 
-  const { data: fresh } = await supabase
-    .from("reservations")
-    .select("*, rooms(type, floor)")
-    .eq("id", selected.id)
-    .single();
+    const existing   = getCharges(fresh);
+    const newCharge  = { id: Date.now(), name: reqName.trim(), amount: parseFloat(reqAmt) };
+    const updated    = [...existing, newCharge];
+    const newBalance = computeNewBalance(fresh, updated);
 
- const existing = getCharges(fresh);  
-  const newCharge  = { id: Date.now(), name: reqName.trim(), amount: parseFloat(reqAmt) };
-  const updated    = [...existing, newCharge];
-  const newBalance = computeNewBalance(fresh, updated);
+    await supabase.from("reservations").update({
+      additional_charges: JSON.stringify(updated),
+      remaining_balance:  newBalance,
+    }).eq("id", selected.id);
 
-  await supabase.from("reservations").update({
-    additional_charges: JSON.stringify(updated),
-    remaining_balance:  newBalance,
-  }).eq("id", selected.id);
+    await logActivity({
+      action:      `Added charge to Room ${selected.room_number}: ${reqName.trim()}`,
+      category:    "charge",
+      details:     `Guest: ${selected.guest_name} | Amount: ₱${parseFloat(reqAmt).toLocaleString()} | New Balance: ₱${newBalance.toLocaleString()}`,
+      entity_type: "reservation",
+      entity_id:   selected.id,
+    });
 
-  await logActivity({
-    action:      `Added charge to Room ${selected.room_number}: ${reqName.trim()}`,
-    category:    "charge",
-    details:     `Guest: ${selected.guest_name} | Amount: ₱${parseFloat(reqAmt).toLocaleString()} | New Balance: ₱${newBalance.toLocaleString()}`,
-    entity_type: "reservation",
-    entity_id:   selected.id,
-  });
+    setSaving(false);
+    setReqName(""); setReqAmt("");
+    const { data } = await supabase.from("reservations").select("*, rooms(type, floor, price)").eq("id", selected.id).single();
+    setSelected(data);
+    fetchGuests();
+  };
 
-  setSaving(false);
-  setReqName(""); setReqAmt("");
-  const { data } = await supabase.from("reservations").select("*, rooms(type, floor)").eq("id", selected.id).single();
-  setSelected(data);
-  fetchGuests();
-};
   const handleDeleteCharge = async (chargeId) => {
     if (!selected) return;
     const updated    = getCharges(selected).filter(c => c.id !== chargeId);
@@ -197,35 +186,75 @@ const handleAddCharge = async () => {
 
     await supabase.from("reservations").update({
       additional_charges: JSON.stringify(updated),
-      remaining_balance:  newBalance, 
+      remaining_balance:  newBalance,
     }).eq("id", selected.id);
 
-    const { data } = await supabase.from("reservations").select("*, rooms(type, floor)").eq("id", selected.id).single();
+    const { data } = await supabase.from("reservations").select("*, rooms(type, floor, price)").eq("id", selected.id).single();
+    setSelected(data);
+    fetchGuests();
+  };
+
+  const handleAddChargeObject = async (chargeObj) => {
+    if (!chargeObj?.name || !chargeObj?.amount || !selected) return;
+    setSaving(true);
+
+    const { data: fresh } = await supabase
+      .from("reservations")
+      .select("*, rooms(type, floor, price)")
+      .eq("id", selected.id)
+      .single();
+
+    const existing   = getCharges(fresh);
+    const newCharge  = {
+      id:              Date.now(),
+      name:            chargeObj.name,
+      amount:          parseFloat(chargeObj.amount),
+      from_restaurant: chargeObj.from_restaurant || false,
+    };
+    const updated    = [...existing, newCharge];
+    const newBalance = computeNewBalance(fresh, updated);
+
+    await supabase.from("reservations").update({
+      additional_charges: JSON.stringify(updated),
+      remaining_balance:  newBalance,
+    }).eq("id", selected.id);
+
+    setSaving(false);
+    const { data } = await supabase.from("reservations").select("*, rooms(type, floor, price)").eq("id", selected.id).single();
     setSelected(data);
     fetchGuests();
   };
 
   const calcPreview = (newDate) => {
     if (!selected || !newDate || !selected.check_in) return null;
-    if (new Date(newDate) <= new Date(selected.check_in)) return null;
+
+    const parseDate   = (d) => new Date(d + "T00:00:00");
+    const checkInDate = parseDate(selected.check_in);
+    const newCheckOut = parseDate(newDate);
+
+    if (newCheckOut <= checkInDate) return null;
 
     const originalNights = selected.check_out
-      ? Math.max(1, Math.ceil((new Date(selected.check_out) - new Date(selected.check_in)) / 86400000))
-      : null;
+      ? Math.round((parseDate(selected.check_out) - checkInDate) / 86400000)
+      : 0;
 
-    const newNights = Math.max(1, Math.ceil((new Date(newDate) - new Date(selected.check_in)) / 86400000));
+    const newNights     = Math.round((newCheckOut - checkInDate) / 86400000);
+    const extraNights   = newNights - originalNights;
+    const pricePerNight = parseFloat(selected.rooms?.price ?? 0);
 
-    const reservationChargesTotal = getCharges(selected)
-      .filter(c => c.from_reservation)
-      .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
-    const pureRoomRate  = parseFloat(selected.total_amount || 0) - reservationChargesTotal;
-    const pricePerNight = originalNights ? pureRoomRate / originalNights : pureRoomRate;
+    if (extraNights === 0) {
+      return { newNights, originalNights, pricePerNight, extraNights: 0, totalCharges: 0, alreadyPaid: 0, diff: 0 };
+    }
 
-    const newTotal     = Math.round(newNights * pricePerNight * 100) / 100;
-    const roomRatePaid = pureRoomRate;
-    const diff         = roomRatePaid - newTotal;
+    if (extraNights > 0) {
+      const totalCharges = extraNights * pricePerNight;
+      return { newNights, originalNights, pricePerNight, extraNights, totalCharges, alreadyPaid: 0, diff: -totalCharges };
+    }
 
-    return { newNights, originalNights, pricePerNight, newTotal, alreadyPaid: roomRatePaid, diff };
+    const refundNights = Math.abs(extraNights);
+    const refundAmount = refundNights * pricePerNight;
+    const alreadyPaid  = parseFloat(selected.amount_paid || 0);
+    return { newNights, originalNights, pricePerNight, extraNights, totalCharges: 0, alreadyPaid, diff: refundAmount };
   };
 
   const handleExtDateChange = (val) => {
@@ -234,31 +263,6 @@ const handleAddCharge = async () => {
     if (!val || !selected?.check_in) { setRefundInfo(null); return; }
     setRefundInfo(calcPreview(val));
   };
-  const handleAddChargeObject = async (chargeObj) => {
-  if (!chargeObj?.name || !chargeObj?.amount || !selected) return;
-  setSaving(true);
-
-  const { data: fresh } = await supabase
-    .from("reservations")
-    .select("*, rooms(type, floor)")
-    .eq("id", selected.id)
-    .single();
-
-  const existing   = getCharges(fresh);
-  const newCharge  = { id: Date.now(), name: chargeObj.name, amount: parseFloat(chargeObj.amount), from_restaurant: chargeObj.from_restaurant || false };
-  const updated    = [...existing, newCharge];
-  const newBalance = computeNewBalance(fresh, updated);
-
-  await supabase.from("reservations").update({
-    additional_charges: JSON.stringify(updated),
-    remaining_balance:  newBalance,
-  }).eq("id", selected.id);
-
-  setSaving(false);
-  const { data } = await supabase.from("reservations").select("*, rooms(type, floor)").eq("id", selected.id).single();
-  setSelected(data);
-  fetchGuests();
-};
 
   const handleSaveDateChange = async () => {
     if (!selected || !extDate) return;
@@ -268,33 +272,53 @@ const handleAddCharge = async () => {
 
     setExtending(true);
 
-    const updatePayload = { check_out: extDate, total_amount: preview.newTotal };
-    if (preview.diff > 0) {
-      updatePayload.amount_paid   = preview.newTotal;
-      updatePayload.pay_later     = false;
-      updatePayload.refund_amount = preview.diff;
-      if (!selected.original_checkout) {
-        updatePayload.original_checkout = selected.check_out;
-        updatePayload.original_amount   = preview.alreadyPaid;
-      }
+    try {
+      const allCharges = getCharges(selected);
+      const nonRoomSum = allCharges
+        .filter(c => c.from_reservation || c.from_checkin)
+        .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+
+      const newNights      = Math.round((new Date(extDate + "T00:00:00") - new Date(selected.check_in + "T00:00:00")) / 86400000);
+      const pricePerNight  = parseFloat(selected.rooms?.price ?? 0);
+      const newRoomTotal   = newNights * pricePerNight;
+      const newTotalAmount = newRoomTotal + nonRoomSum;
+
+      const currentBalance = parseFloat(selected.remaining_balance ?? 0);
+      const newRemaining   = preview.extraNights > 0
+        ? currentBalance + preview.totalCharges
+        : currentBalance - Math.abs(preview.diff);
+
+      const currentCheckinBalance = parseFloat(selected.checkin_balance ?? selected.remaining_balance ?? 0);
+      const newCheckinBalance     = preview.extraNights > 0
+        ? currentCheckinBalance + preview.totalCharges
+        : currentCheckinBalance - Math.abs(preview.diff);
+
+      await supabase.from("reservations").update({
+        check_out:         extDate,
+        total_amount:      newTotalAmount,
+        remaining_balance: Math.max(0, newRemaining),
+        checkin_balance:   Math.max(0, newCheckinBalance),
+      }).eq("id", selected.id);
+
+      await logActivity({
+        action:      `Changed check-out date: ${selected.guest_name}`,
+        category:    "edit",
+        details:     `Room ${selected.room_number} | New checkout: ${extDate} | Extra nights: ${preview.extraNights || 0} | Extra charge: ₱${(preview.totalCharges || 0).toLocaleString()}`,
+        entity_type: "reservation",
+        entity_id:   selected.id,
+      });
+
+      const { data } = await supabase.from("reservations").select("*, rooms(type, floor, price)").eq("id", selected.id).single();
+      setSelected(data);
+      setExtDate("");
+      setRefundInfo(null);
+      setRefundConfirmed(false);
+      fetchGuests();
+    } catch (err) {
+      console.error("Error saving date change:", err);
+    } finally {
+      setExtending(false);
     }
-
-    await supabase.from("reservations").update(updatePayload).eq("id", selected.id);
-    await logActivity({
-      action:      `Changed check-out date: ${selected.guest_name}`,
-      category:    "edit",
-      details:     `Room ${selected.room_number} | New checkout: ${extDate} | New total: ₱${preview.newTotal.toLocaleString()}${preview.diff > 0 ? ` | Refund: ₱${preview.diff.toLocaleString()}` : ""}`,
-      entity_type: "reservation",
-      entity_id:   selected.id,
-    });
-
-    const { data } = await supabase.from("reservations").select("*, rooms(type, floor)").eq("id", selected.id).single();
-    setSelected(data);
-    setExtDate("");
-    setRefundInfo(null);
-    setRefundConfirmed(false);
-    setExtending(false);
-    fetchGuests();
   };
 
   const openModal  = (res) => { setSelected(res); setReqName(""); setReqAmt(""); setExtDate(""); setRefundInfo(null); setRefundConfirmed(false); };
@@ -320,9 +344,9 @@ const handleAddCharge = async () => {
 
         <div className="sc-3">
           {[
-            { lbl: "Currently Staying",  val: guests.length, Icon: RiHotelBedLine, bg: "#e8f5e9", color: "#07713c" },
-            { lbl: "Checking Out Today", val: checkingOutToday, Icon: RiTimeLine, bg: "#fff3e0", color: "#e65100" },
-            { lbl: "Total Add. Charges", val: `₱${guests.reduce((s,g)=>s+getCharges(g).reduce((a,c)=>a+parseFloat(c.amount||0),0),0).toLocaleString()}`, Icon: RiMoneyDollarCircleLine, bg: "#f3e5f5", color: "#6a1b9a" },
+            { lbl: "Currently Staying",  val: guests.length,    Icon: RiHotelBedLine,        bg: "#e8f5e9", color: "#07713c" },
+            { lbl: "Checking Out Today", val: checkingOutToday, Icon: RiTimeLine,             bg: "#fff3e0", color: "#e65100" },
+            { lbl: "Total Add. Charges", val: `₱${guests.reduce((s, g) => s + getCharges(g).filter(c => !c.from_reservation && !c.from_checkin).reduce((a, c) => a + parseFloat(c.amount || 0), 0), 0).toLocaleString()}`, Icon: RiMoneyDollarCircleLine, bg: "#f3e5f5", color: "#6a1b9a" },
           ].map(({ lbl, val, Icon, bg, color }) => (
             <div key={lbl} className="sc" style={{ background: bg }}>
               <div className="sc-row"><Icon size={18} color={color} /><span className="sc-lbl" style={{ color }}>{lbl}</span></div>
@@ -370,7 +394,7 @@ const handleAddCharge = async () => {
                         : <span className="date-val">{res.check_out}</span>
                     }
                   </div>
-                  <div className="ih-td"><span className="rate-val">₱{parseFloat(res.total_amount||0).toLocaleString()}</span></div>
+                  <div className="ih-td"><span className="rate-val">₱{parseFloat(res.total_amount || 0).toLocaleString()}</span></div>
                   <div className="ih-td">
                     <button className="view-btn" onClick={() => openModal(res)}>
                       <RiEyeLine size={13} /> View
@@ -387,7 +411,7 @@ const handleAddCharge = async () => {
         <InhouseModal
           selected={selected}
           onClose={closeModal}
-          charges={getCharges(selected)}
+          charges={getCharges(selected).filter(c => !c.from_reservation && !c.from_checkin)}
           total={calcTotal(selected)}
           stayed={nightsStayed(selected.check_in)}
           left={nightsLeft(selected.check_out)}

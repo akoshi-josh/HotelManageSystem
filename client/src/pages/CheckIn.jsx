@@ -93,37 +93,38 @@ export default function CheckIn({ user }) {
 
   const handleCheckIn = async ({ paidAmt, payLater, isPartial, paymentMethod, additionalCharges }) => {
     setProcessing(true);
-    const checkedId    = selected.id;
-    const baseTotal    = parseFloat(selected?.total_amount || 0);
-    const chargesTotal = (additionalCharges || [])
-  .filter(c => !c.from_reservation)
-  .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
-    const totalBill    = baseTotal + chargesTotal;
+    const checkedId = selected.id;
 
-    const existingCharges = (() => { try { return JSON.parse(selected.additional_charges || "[]"); } catch { return []; } })();
-const mergedCharges = [
-  ...existingCharges,
-  ...(additionalCharges || [])
-    .filter(c => !existingCharges.some(ec => ec.id === c.id))
-    .map(c => ({ ...c, from_checkin: true })),
-];
+    const baseTotal = parseFloat(selected?.total_amount || 0);
 
-const checkinChargesTotal = (additionalCharges || [])
+    const newCheckinCharges = (additionalCharges || []).filter(c => !c.from_reservation);
+    const newCheckinChargesTotal = newCheckinCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
 
-const remainingAtCheckIn = Math.max(0, baseTotal - paidAmt);
+    const totalBill = baseTotal + newCheckinChargesTotal;
 
-console.log("DEBUG paidAmt:", paidAmt, "totalBill:", totalBill, "remaining:", remainingAtCheckIn);
+    const existingCharges = (() => {
+      try { return JSON.parse(selected.additional_charges || "[]"); } catch { return []; }
+    })();
 
-await supabase.from("reservations").update({
-  status:             "checked_in",
-  payment_method:     payLater ? "pay_at_checkout" : paymentMethod,
-  amount_paid:        paidAmt,
-  pay_later:          payLater || isPartial,
-  total_amount:       totalBill,
-  additional_charges: JSON.stringify(mergedCharges),
-  remaining_balance:  remainingAtCheckIn,
-checkin_balance: Math.max(0, baseTotal - paidAmt),
-}).eq("id", checkedId);
+    const mergedCharges = [
+      ...existingCharges,
+      ...newCheckinCharges
+        .filter(c => !existingCharges.some(ec => ec.id === c.id))
+        .map(c => ({ ...c, from_checkin: true })),
+    ];
+
+    const remainingAtCheckIn = Math.max(0, totalBill - paidAmt);
+
+    await supabase.from("reservations").update({
+      status:             "checked_in",
+      payment_method:     payLater ? "pay_at_checkout" : paymentMethod,
+      amount_paid:        paidAmt,
+      pay_later:          payLater || isPartial,
+      total_amount:       totalBill,
+      additional_charges: JSON.stringify(mergedCharges),
+      remaining_balance:  remainingAtCheckIn,
+      checkin_balance:    remainingAtCheckIn,
+    }).eq("id", checkedId);
 
     await supabase.from("rooms").update({ status: "occupied" }).eq("id", selected.room_id);
 
@@ -201,24 +202,32 @@ checkin_balance: Math.max(0, baseTotal - paidAmt),
     const nights = walkIn.check_out
       ? Math.max(0, (new Date(walkIn.check_out) - new Date(walkIn.check_in)) / 86400000)
       : 1;
-    const total  = nights * parseFloat(room?.price || 0);
+    const total = nights * parseFloat(room?.price || 0);
 
     const walkInChargesTotal = (walkIn.additional_charges || []).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     const totalWithCharges   = total + walkInChargesTotal;
     const amtReceived        = parseFloat(walkIn.amount_received || 0);
 
+    const paidAmt = walkInPayLater ? 0 : (amtReceived > 0 ? Math.min(amtReceived, totalWithCharges) : totalWithCharges);
+    const remainingAtCheckIn = Math.max(0, totalWithCharges - paidAmt);
+
     const { error } = await supabase.from("reservations").insert({
-      guest_name:  walkIn.guest_name, guest_email: walkIn.guest_email,
-      guest_phone: walkIn.guest_phone, room_id: walkIn.room_id,
-      room_number: room?.room_number,  check_in:   walkIn.check_in,
+      guest_name:         walkIn.guest_name,
+      guest_email:        walkIn.guest_email,
+      guest_phone:        walkIn.guest_phone,
+      room_id:            walkIn.room_id,
+      room_number:        room?.room_number,
+      check_in:           walkIn.check_in,
       ...(walkIn.check_out ? { check_out: walkIn.check_out } : {}),
-      status:       "checked_in",
-      total_amount: total,
-      notes:        walkIn.notes,
-      amount_paid:    walkInPayLater ? 0 : (amtReceived > 0 ? Math.min(amtReceived, totalWithCharges) : totalWithCharges),
-      pay_later:      walkInPayLater || (!walkInPayLater && amtReceived > 0 && amtReceived < totalWithCharges),
-      payment_method: walkInPayLater ? "pay_at_checkout" : "cash",
+      status:             "checked_in",
+      total_amount:       totalWithCharges,
+      notes:              walkIn.notes,
+      amount_paid:        paidAmt,
+      pay_later:          walkInPayLater || (!walkInPayLater && amtReceived > 0 && amtReceived < totalWithCharges),
+      payment_method:     walkInPayLater ? "pay_at_checkout" : "cash",
       additional_charges: JSON.stringify(walkIn.additional_charges || []),
+      remaining_balance:  remainingAtCheckIn,
+      checkin_balance:    remainingAtCheckIn,
     });
 
     if (error) { setWalkInError(error.message); setSavingWalkIn(false); return; }
@@ -228,7 +237,7 @@ checkin_balance: Math.max(0, baseTotal - paidAmt),
     logActivity({
       action:      `Walk-in check-in: ${walkIn.guest_name}`,
       category:    "check_in",
-      details:     `Room ${room?.room_number} | Total ₱${total.toLocaleString()}`,
+      details:     `Room ${room?.room_number} | Total ₱${totalWithCharges.toLocaleString()}`,
       entity_type: "reservation",
     });
 
@@ -246,13 +255,16 @@ checkin_balance: Math.max(0, baseTotal - paidAmt),
       resCharges:    [],
       walkInCharges: walkIn.additional_charges || [],
       grandTotal:    totalWithCharges,
-      amountPaid:    walkInPayLater ? 0 : (amtReceived > 0 ? Math.min(amtReceived, totalWithCharges) : totalWithCharges),
+      amountPaid:    paidAmt,
       payMethod:     walkInPayLater ? "pay_at_checkout" : "cash",
     };
 
     setSavingWalkIn(false);
     setShowWalkIn(false);
-    setWalkIn({ guest_name: "", guest_email: "", guest_phone: "", room_id: "", check_in: today, check_out: "", notes: "", additional_charges: [] });
+    setWalkIn({
+      guest_name: "", guest_email: "", guest_phone: "",
+      room_id: "", check_in: today, check_out: "", notes: "", additional_charges: [],
+    });
 
     printCheckInReceipt(
       wiReceipt,
