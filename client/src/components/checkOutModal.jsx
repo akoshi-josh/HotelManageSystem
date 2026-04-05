@@ -126,7 +126,7 @@ export default function CheckOutModal({
                 ["Check-In",  selected.check_in],
                 ["Check-Out", selected.check_out],
                 ["Duration",  `${Math.max(0, (new Date(selected.check_out) - new Date(selected.check_in)) / 86400000)} nights`],
-                ["Room Rate", `₱${roomRate.toLocaleString()}`],
+                ["Room Rate", `₱${displayRoomRate.toLocaleString()}`],
               ].map(([k, v]) => (
                 <div key={k} style={{ background: "#f8f9fa", borderRadius: "8px", padding: "10px 12px" }}>
                   <div style={{ color: "#aaa", fontSize: "0.75rem", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>

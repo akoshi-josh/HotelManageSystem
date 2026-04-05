@@ -129,6 +129,8 @@ export default function InHouse({ highlightId }) {
     try { return JSON.parse(res?.additional_charges || "[]"); } catch { return []; }
   };
 
+  const isInhouseCharge = (c) => !c.from_reservation && !c.from_checkin;
+
   const calcTotal = (res) => {
     return parseFloat(res.remaining_balance ?? 0);
   };
@@ -136,7 +138,7 @@ export default function InHouse({ highlightId }) {
   const computeNewBalance = (res, chargesList) => {
     const checkinBase = parseFloat(res.checkin_balance ?? res.remaining_balance ?? 0);
     const postCheckin = chargesList
-      .filter(c => !c.from_reservation && !c.from_checkin)
+      .filter(c => isInhouseCharge(c))
       .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
     return parseFloat((checkinBase + postCheckin).toFixed(2));
   };
@@ -154,8 +156,12 @@ export default function InHouse({ highlightId }) {
       .eq("id", selected.id)
       .single();
 
-    const existing   = getCharges(fresh);
-    const newCharge  = { id: Date.now(), name: reqName.trim(), amount: parseFloat(reqAmt) };
+    const existing  = getCharges(fresh);
+    const newCharge = {
+      id:     Date.now(),
+      name:   reqName.trim(),
+      amount: parseFloat(reqAmt),
+    };
     const updated    = [...existing, newCharge];
     const newBalance = computeNewBalance(fresh, updated);
 
@@ -174,14 +180,20 @@ export default function InHouse({ highlightId }) {
 
     setSaving(false);
     setReqName(""); setReqAmt("");
-    const { data } = await supabase.from("reservations").select("*, rooms(type, floor, price)").eq("id", selected.id).single();
-    setSelected(data);
+
+    setSelected({
+      ...fresh,
+      additional_charges: JSON.stringify(updated),
+      remaining_balance:  newBalance,
+    });
     fetchGuests();
   };
 
   const handleDeleteCharge = async (chargeId) => {
     if (!selected) return;
-    const updated    = getCharges(selected).filter(c => c.id !== chargeId);
+
+    const existing   = getCharges(selected);
+    const updated    = existing.filter(c => c.id !== chargeId);
     const newBalance = computeNewBalance(selected, updated);
 
     await supabase.from("reservations").update({
@@ -189,8 +201,11 @@ export default function InHouse({ highlightId }) {
       remaining_balance:  newBalance,
     }).eq("id", selected.id);
 
-    const { data } = await supabase.from("reservations").select("*, rooms(type, floor, price)").eq("id", selected.id).single();
-    setSelected(data);
+    setSelected({
+      ...selected,
+      additional_charges: JSON.stringify(updated),
+      remaining_balance:  newBalance,
+    });
     fetchGuests();
   };
 
@@ -204,8 +219,8 @@ export default function InHouse({ highlightId }) {
       .eq("id", selected.id)
       .single();
 
-    const existing   = getCharges(fresh);
-    const newCharge  = {
+    const existing  = getCharges(fresh);
+    const newCharge = {
       id:              Date.now(),
       name:            chargeObj.name,
       amount:          parseFloat(chargeObj.amount),
@@ -220,8 +235,12 @@ export default function InHouse({ highlightId }) {
     }).eq("id", selected.id);
 
     setSaving(false);
-    const { data } = await supabase.from("reservations").select("*, rooms(type, floor, price)").eq("id", selected.id).single();
-    setSelected(data);
+
+    setSelected({
+      ...fresh,
+      additional_charges: JSON.stringify(updated),
+      remaining_balance:  newBalance,
+    });
     fetchGuests();
   };
 
@@ -283,13 +302,13 @@ export default function InHouse({ highlightId }) {
       const newRoomTotal   = newNights * pricePerNight;
       const newTotalAmount = newRoomTotal + nonRoomSum;
 
-      const currentBalance = parseFloat(selected.remaining_balance ?? 0);
-      const newRemaining   = preview.extraNights > 0
+      const currentBalance        = parseFloat(selected.remaining_balance ?? 0);
+      const currentCheckinBalance = parseFloat(selected.checkin_balance ?? selected.remaining_balance ?? 0);
+
+      const newRemaining      = preview.extraNights > 0
         ? currentBalance + preview.totalCharges
         : currentBalance - Math.abs(preview.diff);
-
-      const currentCheckinBalance = parseFloat(selected.checkin_balance ?? selected.remaining_balance ?? 0);
-      const newCheckinBalance     = preview.extraNights > 0
+      const newCheckinBalance = preview.extraNights > 0
         ? currentCheckinBalance + preview.totalCharges
         : currentCheckinBalance - Math.abs(preview.diff);
 
@@ -346,7 +365,7 @@ export default function InHouse({ highlightId }) {
           {[
             { lbl: "Currently Staying",  val: guests.length,    Icon: RiHotelBedLine,        bg: "#e8f5e9", color: "#07713c" },
             { lbl: "Checking Out Today", val: checkingOutToday, Icon: RiTimeLine,             bg: "#fff3e0", color: "#e65100" },
-            { lbl: "Total Add. Charges", val: `₱${guests.reduce((s, g) => s + getCharges(g).filter(c => !c.from_reservation && !c.from_checkin).reduce((a, c) => a + parseFloat(c.amount || 0), 0), 0).toLocaleString()}`, Icon: RiMoneyDollarCircleLine, bg: "#f3e5f5", color: "#6a1b9a" },
+            { lbl: "Total Add. Charges", val: `₱${guests.reduce((s, g) => s + getCharges(g).filter(c => isInhouseCharge(c)).reduce((a, c) => a + parseFloat(c.amount || 0), 0), 0).toLocaleString()}`, Icon: RiMoneyDollarCircleLine, bg: "#f3e5f5", color: "#6a1b9a" },
           ].map(({ lbl, val, Icon, bg, color }) => (
             <div key={lbl} className="sc" style={{ background: bg }}>
               <div className="sc-row"><Icon size={18} color={color} /><span className="sc-lbl" style={{ color }}>{lbl}</span></div>
@@ -411,7 +430,7 @@ export default function InHouse({ highlightId }) {
         <InhouseModal
           selected={selected}
           onClose={closeModal}
-          charges={getCharges(selected).filter(c => !c.from_reservation && !c.from_checkin)}
+          charges={getCharges(selected)}
           total={calcTotal(selected)}
           stayed={nightsStayed(selected.check_in)}
           left={nightsLeft(selected.check_out)}

@@ -131,7 +131,7 @@ export const printCheckOutReceipt = (data, issuedBy = {}) => {
       <td class="${indent ? "indent" : ""}" style="color:${colorClass || "#333"}">${label}</td>
       <td style="font-weight:600;color:${colorClass || "#333"}">${php(amount)}</td>
     </tr>`;
-
+  
   const rows = [
     lineRow("Room Charge", data.roomCharge),
     ...(data.resCharges || []).map(c => lineRow(`  ${c.name}  (reservation)`, c.amount, "#999", true)),
