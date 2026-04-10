@@ -71,7 +71,7 @@ export default function CheckIn({ user }) {
 
   const today = new Date().toISOString().split("T")[0];
 
-  useEffect(() => { fetchData(); }, []); // eslint-disable-line
+  useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
     setLoading(true);
@@ -212,6 +212,12 @@ export default function CheckIn({ user }) {
     const remainingAtCheckIn = Math.max(0, totalWithCharges - paidAmt);
 
     const { error } = await supabase.from("reservations").insert({
+      remaining_balance: walkInPayLater 
+      ? totalWithCharges 
+      : Math.max(0, totalWithCharges - (amtReceived > 0 ? Math.min(amtReceived, totalWithCharges) : totalWithCharges)),
+    checkin_balance: walkInPayLater 
+      ? totalWithCharges 
+      : Math.max(0, totalWithCharges - (amtReceived > 0 ? Math.min(amtReceived, totalWithCharges) : totalWithCharges)),
       guest_name:         walkIn.guest_name,
       guest_email:        walkIn.guest_email,
       guest_phone:        walkIn.guest_phone,
@@ -225,7 +231,9 @@ export default function CheckIn({ user }) {
       amount_paid:        paidAmt,
       pay_later:          walkInPayLater || (!walkInPayLater && amtReceived > 0 && amtReceived < totalWithCharges),
       payment_method:     walkInPayLater ? "pay_at_checkout" : "cash",
-      additional_charges: JSON.stringify(walkIn.additional_charges || []),
+      additional_charges: JSON.stringify(
+  (walkIn.additional_charges || []).map(c => ({ ...c, from_checkin: true }))
+),
       remaining_balance:  remainingAtCheckIn,
       checkin_balance:    remainingAtCheckIn,
     });

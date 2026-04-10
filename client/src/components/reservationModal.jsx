@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { RiDeleteBinLine, RiRestaurantLine } from "react-icons/ri";
 import RestaurantAddOnsModal from "./RestaurantAddOnsModal";
 import supabase from "../supabaseClient";
+import RoomPickerModal from "./RoomPickerModal";
 
 function AddChargeInline({ onAdd }) {
   const [name, setName] = React.useState("");
@@ -66,7 +67,7 @@ export default function ReservationModal({
 
   const restaurantChargesCount = (form.additional_charges || []).filter(c => c.from_restaurant).length;
 
-  // Additional charges total (for display only — does not affect any saved logic)
+ const [showRoomPicker, setShowRoomPicker] = useState(false);
   const additionalChargesTotal = (form.additional_charges || [])
     .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
 
@@ -222,29 +223,27 @@ export default function ReservationModal({
                 🛏️ Room & Dates
               </div>
 
-              <div style={{ marginBottom: "14px" }}>
-                <label style={labelStyle}>Select Room <span style={{ color: "#e53935" }}>*</span></label>
-                <select
-                  value={form.room_id}
-                  onChange={e => setForm({ ...form, room_id: e.target.value })}
-                  style={{ ...inputStyle, cursor: "pointer" }}
-                >
-                  <option value="">— Choose an available room —</option>
-                  {selectableRooms.length === 0
-                    ? <option disabled>No available rooms right now</option>
-                    : selectableRooms.map(r => (
-                        <option key={r.id} value={r.id}>
-                          Room {r.room_number} | {r.type} | Floor {r.floor} | ₱{parseFloat(r.price).toLocaleString()}/night
-                        </option>
-                      ))
-                  }
-                </select>
-                {selectableRooms.length === 0 && (
-                  <p style={{ margin: "6px 0 0", fontSize: "0.8rem", color: "#e65100" }}>
-                    ⚠️ All rooms are currently occupied or under maintenance.
-                  </p>
-                )}
-              </div>
+                <div style={{ marginBottom: "14px" }}>
+                  <label style={labelStyle}>Select Room <span style={{ color: "#e53935" }}>*</span></label>
+                  <button
+                    type="button"
+                    onClick={() => setShowRoomPicker(true)}
+                    style={{ ...inputStyle, cursor: "pointer", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center", color: selectedRoom ? "#222" : "#aaa" }}
+                  >
+                    <span>
+                      {selectedRoom
+                        ? `Room ${selectedRoom.room_number} | ${selectedRoom.type} | Floor ${selectedRoom.floor} | ₱${parseFloat(selectedRoom.price).toLocaleString()}/night`
+                        : "— Choose an available room —"
+                      }
+                    </span>
+                    <span style={{ fontSize: "0.75rem", color: "#888" }}>Browse ▾</span>
+                  </button>
+                  {selectableRooms.length === 0 && (
+                    <p style={{ margin: "6px 0 0", fontSize: "0.8rem", color: "#e65100" }}>
+                      ⚠️ All rooms are currently occupied or under maintenance.
+                    </p>
+                  )}
+                </div>
 
               {selectedRoom && (
                 <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", marginBottom: "14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -521,6 +520,14 @@ export default function ReservationModal({
             }));
             setShowAddOns(false);
           }}
+        />
+      )}
+      {showRoomPicker && (
+        <RoomPickerModal
+          rooms={selectableRooms}
+          selectedRoomId={form.room_id}
+          onSelect={r => setForm({ ...form, room_id: r.id })}
+          onClose={() => setShowRoomPicker(false)}
         />
       )}
     </>

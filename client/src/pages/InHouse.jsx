@@ -209,41 +209,35 @@ export default function InHouse({ highlightId }) {
     fetchGuests();
   };
 
-  const handleAddChargeObject = async (chargeObj) => {
-    if (!chargeObj?.name || !chargeObj?.amount || !selected) return;
-    setSaving(true);
+const handleAddChargeObject = async (newCharges) => {
+  if (!newCharges?.length || !selected) return;
+  setSaving(true);
 
-    const { data: fresh } = await supabase
-      .from("reservations")
-      .select("*, rooms(type, floor, price)")
-      .eq("id", selected.id)
-      .single();
+  const { data: fresh } = await supabase
+    .from("reservations")
+    .select("*, rooms(type, floor, price)")
+    .eq("id", selected.id)
+    .single();
 
-    const existing  = getCharges(fresh);
-    const newCharge = {
-      id:              Date.now(),
-      name:            chargeObj.name,
-      amount:          parseFloat(chargeObj.amount),
-      from_restaurant: chargeObj.from_restaurant || false,
-    };
-    const updated    = [...existing, newCharge];
-    const newBalance = computeNewBalance(fresh, updated);
+  const existing = getCharges(fresh);
+  const tagged   = newCharges.map(c => ({
+    id:              `rst-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    name:            c.name,
+    amount:          parseFloat(c.amount),
+    from_restaurant: true,
+  }));
+  const updated    = [...existing, ...tagged];
+  const newBalance = computeNewBalance(fresh, updated);
 
-    await supabase.from("reservations").update({
-      additional_charges: JSON.stringify(updated),
-      remaining_balance:  newBalance,
-    }).eq("id", selected.id);
+  await supabase.from("reservations").update({
+    additional_charges: JSON.stringify(updated),
+    remaining_balance:  newBalance,
+  }).eq("id", selected.id);
 
-    setSaving(false);
-
-    setSelected({
-      ...fresh,
-      additional_charges: JSON.stringify(updated),
-      remaining_balance:  newBalance,
-    });
-    fetchGuests();
-  };
-
+  setSaving(false);
+  setSelected({ ...fresh, additional_charges: JSON.stringify(updated), remaining_balance: newBalance });
+  fetchGuests();
+};
   const calcPreview = (newDate) => {
     if (!selected || !newDate || !selected.check_in) return null;
 

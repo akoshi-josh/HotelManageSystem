@@ -75,7 +75,7 @@ const CSS = `
 .sb-icon { font-size: 18px; width: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
 .sb-footer {
-  padding: 13px 14px;
+  padding: 13px 14px;SS
   border-top: 1px solid rgba(255,255,255,0.07);
   position: relative; z-index: 1; flex-shrink: 0;
 }
@@ -112,7 +112,7 @@ const ROLE_BADGE_CFG = {
   staff:        { bg: "rgba(92,184,92,0.2)",   color: "#a5d6a7",  label: "Staff"        },
   receptionist: { bg: "rgba(144,202,249,0.2)", color: "#90caf9",  label: "Receptionist" },
   maintenance:  { bg: "rgba(255,183,77,0.2)",  color: "#ffcc80",  label: "Maintenance"  },
-  restaurant:   { bg: "rgba(206,147,216,0.2)", color: "#ce93d8",  label: "Restaurant"   }, // ← NEW
+  restaurant:   { bg: "rgba(206,147,216,0.2)", color: "#ce93d8",  label: "Restaurant"   }, 
 };
 
 const NAV = [
@@ -126,8 +126,8 @@ const NAV = [
   { label: "Guests",       Icon: RiGroupLine,       key: "Guests",       roles: ["admin","staff","receptionist"] },
   { section: "Maintenance" },
   { label: "Maintenance",  Icon: RiToolsLine,       key: "Maintenance",  roles: ["admin","maintenance"] },
-  { section: "Restaurant" },                                                                  // ← NEW section
-  { label: "Restaurant",   Icon: RiRestaurantLine,  key: "Restaurant",   roles: ["admin","restaurant"] }, // ← NEW
+  { section: "Restaurant" },                                                                 
+  { label: "Restaurant",   Icon: RiRestaurantLine,  key: "Restaurant",   roles: ["admin","restaurant"] }, 
   { section: "Admin" },
   { label: "Log",          Icon: RiHistoryLine,     key: "Log",          roles: ["admin"] },
   { label: "Staff",        Icon: RiUserLine,        key: "Staff",        roles: ["admin"] },
@@ -140,7 +140,7 @@ export default function Sidebar({ activeNav, setActiveNav, onLogout, userRole, u
   const badge      = ROLE_BADGE_CFG[userRole] || ROLE_BADGE_CFG.staff;
   const visibleNav = NAV.filter(item => item.section || (item.roles && item.roles.includes(userRole)));
 
-  // Hide section headers that have no items following them for this role
+  
   const filtered = visibleNav.filter((item, idx) => {
     if (!item.section) return true;
     const next = visibleNav[idx + 1];

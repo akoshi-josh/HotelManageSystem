@@ -305,12 +305,10 @@ export default function InhouseModal({
           roomNumber={selected?.room_number}
           isCheckedIn={true}
           onClose={() => setShowRestaurant(false)}
-          onConfirm={(charges) => {
-            charges.forEach(c => {
-              onAddChargeObject({ name: c.name, amount: c.amount, from_restaurant: true });
-            });
-            setShowRestaurant(false);
-          }}
+onConfirm={(charges) => {
+  onAddChargeObject(charges);
+  setShowRestaurant(false);
+}}
         />
       )}
     </>

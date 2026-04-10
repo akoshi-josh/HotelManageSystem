@@ -17,8 +17,7 @@ const STATUS_CFG = {
 const BED_TYPES   = ["Single", "Queen", "Master"];
 const ROOM_TYPES  = ["Standard", "Deluxe", "Suite"];
 
-// Default bed config per room type
-const DEFAULT_BED_CONFIG = { Single: 0, Queen: 0, Master: 0 };
+const DEFAULT_BED_CONFIG = { Single: 0, Queen: 0, Master: 0 };  
 
 const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -40,7 +39,7 @@ const CSS = `
 .rm-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
 .rc { background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 2px 10px rgba(0,0,0,.06); transition:transform .2s,box-shadow .2s; border:1px solid #e4ebe4; }
 .rc:hover { transform:translateY(-3px); box-shadow:0 8px 24px rgba(0,0,0,.11); }
-.rc-top { background:linear-gradient(135deg,#07713c,#0a9150); padding:16px 20px; color:#fff; }
+.rc-top { background:linear-gradient(135deg,#07713c,#0a9150); padding:16px 20px; color:#fff; min-height:180px; position:relative; }
 .rc-top-row { display:flex; justify-content:space-between; align-items:flex-start; }
 .rc-num { font-size:2rem; font-weight:700; line-height:1; }
 .rc-lbl { font-size:.68rem; opacity:.65; margin-bottom:2px; }
@@ -107,7 +106,7 @@ function calcMaxOccupancy(config) {
 
 function parseBedConfig(room) {
   try {
-    // bed_config may come as array (JSONB) or string (legacy)
+
     let arr = room.bed_config;
     if (typeof arr === "string") arr = JSON.parse(arr);
     if (Array.isArray(arr) && arr.length > 0) {
@@ -116,7 +115,7 @@ function parseBedConfig(room) {
       return obj;
     }
   } catch {}
-  // Fallback to old single bed_type column
+
   const obj = { ...DEFAULT_BED_CONFIG };
   const mappedType = BED_TYPES.includes(room.bed_type) ? room.bed_type : "Single";
   if (mappedType && BED_TYPES.includes(mappedType)) obj[mappedType] = room.bed_count || 1;
@@ -135,11 +134,14 @@ export default function Rooms({ userRole }) {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterType,   setFilterType]   = useState("all");
   const [filterBed,    setFilterBed]    = useState("all");
+  const [imgViewer, setImgViewer] = useState(null);
   const [form, setForm] = useState({
     room_number: "", type: "Standard", floor: "", price: "",
     status: "available", description: "",
   });
   const [bedConfig, setBedConfig] = useState({ ...DEFAULT_BED_CONFIG });
+  const [roomImgFile,    setRoomImgFile]    = useState(null);
+const [roomImgPreview, setRoomImgPreview] = useState("");
 
   useEffect(() => { fetchRooms(); }, []);
 
@@ -154,6 +156,7 @@ export default function Rooms({ userRole }) {
     setEditRoom(null);
     setForm({ room_number: "", type: "Standard", floor: "", price: "", status: "available", description: "" });
     setBedConfig({ ...DEFAULT_BED_CONFIG, Single: 1 });
+    setRoomImgFile(null); setRoomImgPreview("");
     setError(""); setSuccess(""); setShowModal(true);
   };
 
@@ -161,6 +164,7 @@ export default function Rooms({ userRole }) {
     setEditRoom(room);
     setForm({ room_number: room.room_number, type: room.type, floor: room.floor, price: room.price, status: room.status, description: room.description || "" });
     setBedConfig(parseBedConfig(room));
+    setRoomImgFile(null); setRoomImgPreview(room.image_url || "");
     setError(""); setSuccess(""); setShowModal(true);
   };
 
@@ -169,6 +173,17 @@ export default function Rooms({ userRole }) {
   };
 
   const totalBeds = Object.values(bedConfig).reduce((s, n) => s + n, 0);
+
+  const uploadRoomImage = async (file) => {
+  const ext  = file.name.split(".").pop();
+  const path = `rooms/${Date.now()}.${ext}`;
+  const { error: upErr } = await supabase.storage
+    .from("room-images")
+    .upload(path, file, { upsert: true });
+  if (upErr) throw upErr;
+  const { data } = supabase.storage.from("room-images").getPublicUrl(path);
+  return data.publicUrl;
+};
 
   const handleSave = async () => {
     setError("");
@@ -179,7 +194,7 @@ export default function Rooms({ userRole }) {
 
     setSaving(true);
 
-    // Determine primary bed_type (highest priority: Master > Queen > Single)
+ 
     const priority = ["Master", "Queen", "Single"];
     const primaryBedType = priority.find(t => bedConfig[t] > 0) || "Single";
     const primaryBedCount = bedConfig[primaryBedType];
@@ -188,6 +203,7 @@ export default function Rooms({ userRole }) {
 
     const payload = {
       room_number:   form.room_number,
+      image_url:     roomImgFile ? await uploadRoomImage(roomImgFile) : (editRoom?.image_url || null),
       type:          form.type,
       floor:         parseInt(form.floor),
       price:         parseFloat(form.price),
@@ -297,7 +313,13 @@ export default function Rooms({ userRole }) {
               const bedTags = BED_TYPES.filter(t => config[t] > 0).map(t => `${config[t]}× ${t}`);
               return (
                 <div key={room.id} className="rc">
-                  <div className="rc-top">
+              <div className="rc-top" style={{
+                background: room.image_url
+                  ? `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.55)), url(${room.image_url}) center/cover no-repeat`
+                  : "linear-gradient(135deg,#07713c,#0a9150)",
+                minHeight: "110px",
+                cursor: room.image_url ? "pointer" : "default",
+              }} onClick={() => room.image_url && setImgViewer(room.image_url)}>
                     <div className="rc-top-row">
                       <div>
                         <div className="rc-lbl">Room</div>
@@ -358,6 +380,39 @@ export default function Rooms({ userRole }) {
             <div className="mbody">
               {error   && <div className="alert-err">⚠ {error}</div>}
               {success && <div className="alert-ok">✓ {success}</div>}
+
+              <div className="msec">
+  <div className="msec-title">Room Image</div>
+  <div
+    onClick={() => document.getElementById("room-img-input").click()}
+    style={{ width: "100%", height: "140px", border: "2px dashed #ccdacc", borderRadius: "12px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "#f8faf8", overflow: "hidden", position: "relative", transition: "border-color .2s" }}
+    onMouseOver={e => e.currentTarget.style.borderColor = "#07713c"}
+    onMouseOut={e => e.currentTarget.style.borderColor = "#ccdacc"}
+  >
+    <input id="room-img-input" type="file" accept="image/*" style={{ display: "none" }}
+      onChange={e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setRoomImgFile(file);
+        setRoomImgPreview(URL.createObjectURL(file));
+      }}
+    />
+    {roomImgPreview
+      ? <img src={roomImgPreview} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      : <div style={{ textAlign: "center", color: "#7a9a7a" }}>
+          <RiHotelBedLine size={28} color="#ccdacc" />
+          <div style={{ fontSize: ".8rem", fontWeight: "600", marginTop: "6px" }}>Click to upload room image</div>
+          <div style={{ fontSize: ".72rem", color: "#aaa", marginTop: "2px" }}>PNG, JPG, WEBP</div>
+        </div>
+    }
+  </div>
+  {roomImgPreview && (
+    <button onClick={() => { setRoomImgFile(null); setRoomImgPreview(""); }}
+      style={{ marginTop: "7px", fontSize: ".78rem", color: "#dc2626", background: "none", border: "none", cursor: "pointer", fontFamily: "Arial,sans-serif" }}>
+      ✕ Remove image
+    </button>
+  )}
+</div>
 
               <div className="msec">
                 <div className="msec-title">Room Info</div>
@@ -436,6 +491,25 @@ export default function Rooms({ userRole }) {
           </div>
         </div>
       )}
+      {imgViewer && (
+  <div
+    onClick={() => setImgViewer(null)}
+    style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.88)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}
+  >
+    <button
+      onClick={() => setImgViewer(null)}
+      style={{ position: "absolute", top: "20px", right: "20px", background: "rgba(255,255,255,0.15)", border: "none", width: "40px", height: "40px", borderRadius: "50%", cursor: "pointer", color: "#fff", fontSize: "1.3rem", display: "flex", alignItems: "center", justifyContent: "center" }}
+    >
+      ×
+    </button>
+    <img
+      src={imgViewer}
+      alt="Room"
+      onClick={e => e.stopPropagation()}
+      style={{ width: "80vw", height: "80vh", borderRadius: "12px", objectFit: "cover", boxShadow: "0 24px 80px rgba(0,0,0,0.5)" }}
+    />
+  </div>
+)}
     </>
   );
 }

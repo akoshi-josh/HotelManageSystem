@@ -5,8 +5,12 @@ import {
   RiRestaurantLine,
 } from "react-icons/ri";
 import RestaurantAddOnsModal from "./RestaurantAddOnsModal";
+import RoomPickerModal from "./RoomPickerModal";
 
 const CSS = `
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
 .mo-wi { position:fixed; inset:0; z-index:999; display:flex; align-items:flex-start; justify-content:center; background:rgba(0,0,0,.52); backdrop-filter:blur(2px); padding:20px; overflow-y:auto; }
 .mb-wi { background:#f4f6f0; border-radius:20px; width:100%; max-width:720px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.22); margin:auto; }
 .mh-blue { background:linear-gradient(135deg,#1565c0,#1976d2); padding:20px 24px; border-radius:20px 20px 0 0; display:flex; justify-content:space-between; align-items:center; }
@@ -45,6 +49,7 @@ function AddChargeBlue({ onAdd }) {
     onAdd({ id: Date.now(), name: name.trim(), amount: parseFloat(amount) });
     setName(""); setAmount("");
   };
+
   return (
     <div className="add-row">
       <input className="add-fi-blue" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Extra pillow, Room service..." onKeyDown={e => e.key === "Enter" && handle()} />
@@ -66,6 +71,8 @@ export default function WalkInModal({
   onConfirm,
 }) {
   const [showAddOns, setShowAddOns] = React.useState(false);
+  const [showRoomPicker, setShowRoomPicker] = React.useState(false);
+  
 
   const restaurantCount = (walkIn.additional_charges || []).filter(c => c.from_restaurant).length;
 
@@ -106,17 +113,28 @@ export default function WalkInModal({
 
             <div className="msec">
               <div className="msec-title-blue"><RiHotelBedLine size={13} />Room & Dates</div>
-              <div style={{ marginBottom: "10px" }}>
-                <label className="flabel">Select Room <span style={{ color: "#e53935" }}>*</span></label>
-                <select className="fi" style={{ cursor: "pointer" }} value={walkIn.room_id} onChange={e => setWalkIn({ ...walkIn, room_id: e.target.value })}>
-                  <option value="">— Choose an available room —</option>
-                  {availableRooms.map(r => (
-                    <option key={r.id} value={r.id}>
-                      Room {r.room_number} | {r.type} | Floor {r.floor} | ₱{parseFloat(r.price).toLocaleString()}/night
-                    </option>
-                  ))}
-                </select>
-              </div>
+<div style={{ marginBottom: "10px" }}>
+  <label className="flabel">Select Room <span style={{ color: "#e53935" }}>*</span></label>
+  {(() => {
+    const selectedRoom = availableRooms.find(r => r.id === walkIn.room_id);
+    return (
+      <button
+        type="button"
+        onClick={() => setShowRoomPicker(true)}
+        className="fi"
+        style={{ cursor: "pointer", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center", color: selectedRoom ? "#222" : "#a8b8a8", fontStyle: selectedRoom ? "normal" : "italic" }}
+      >
+        <span>
+          {selectedRoom
+            ? `Room ${selectedRoom.room_number} | ${selectedRoom.type} | Floor ${selectedRoom.floor} | ₱${parseFloat(selectedRoom.price).toLocaleString()}/night`
+            : "— Choose an available room —"
+          }
+        </span>
+        <span style={{ fontSize: "0.75rem", color: "#888", fontStyle: "normal" }}>Browse ▾</span>
+      </button>
+    );
+  })()}
+</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                 <div>
                   <label className="flabel">Check-In <span style={{ color: "#e53935" }}>*</span></label>
@@ -153,56 +171,63 @@ export default function WalkInModal({
                 ))}
               </div>
 
-              {!walkInPayLater && (
-                <>
-                  {(walkIn.additional_charges || []).length > 0 && (
-                    <div style={{ marginTop: "12px", background: "#f4f6f0", borderRadius: "10px", padding: "12px 14px" }}>
-                      <div style={{ fontSize: ".68rem", fontWeight: "700", color: "#555", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "8px" }}>Bill Breakdown</div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".83rem", color: "#555", marginBottom: "4px" }}>
-                        <span>Room Rate</span>
-                        <span style={{ fontWeight: "600" }}>₱{calcWalkInRoomOnly().toLocaleString()}</span>
-                      </div>
-                      {(walkIn.additional_charges || []).map(c => (
-                        <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: ".83rem", color: "#555", marginBottom: "4px" }}>
-                          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                            {c.from_restaurant && <RiRestaurantLine size={11} color="#b45309" />}
-                            • {c.name}
-                          </span>
-                          <span style={{ fontWeight: "600" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
-                        </div>
-                      ))}
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".88rem", fontWeight: "700", borderTop: "1px solid #ddd", paddingTop: "6px", marginTop: "4px" }}>
-                        <span style={{ color: "#333" }}>Total to Collect</span>
-                        <span style={{ color: "#1565c0" }}>₱{calcWalkInTotal().toLocaleString()}</span>
-                      </div>
-                    </div>
-                  )}
-                  <div style={{ marginTop: "12px", marginBottom: "10px" }}>
-                    <label className="flabel" style={{ display: "block", fontSize: ".8rem", fontWeight: "700", color: "#555", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.4px" }}>Amount Received (₱)</label>
-                    <input
-                      type="number" className="fi"
-                      style={{ fontSize: "1rem", fontWeight: "700" }}
-                      value={walkIn.amount_received || ""}
-                      onChange={e => setWalkIn({ ...walkIn, amount_received: e.target.value })}
-                      placeholder="Enter amount given by guest"
-                      onFocus={e => e.target.style.borderColor = "#1565c0"}
-                      onBlur={e => e.target.style.borderColor = "#ccdacc"}
-                    />
-                  </div>
-                  {parseFloat(walkIn.amount_received || 0) > calcWalkInTotal() && calcWalkInTotal() > 0 && (
-                    <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                      <span style={{ color: "#1b5e20", fontWeight: "600", fontSize: "0.9rem" }}>💵 Change to return</span>
-                      <span style={{ color: "#1b5e20", fontWeight: "700", fontSize: "1.2rem" }}>₱{(parseFloat(walkIn.amount_received) - calcWalkInTotal()).toLocaleString()}</span>
-                    </div>
-                  )}
-                  {parseFloat(walkIn.amount_received || 0) > 0 && parseFloat(walkIn.amount_received || 0) < calcWalkInTotal() && (
-                    <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ color: "#e65100", fontWeight: "700", fontSize: "0.88rem" }}>⚠ Balance due at Check-Out</span>
-                      <span style={{ color: "#e65100", fontWeight: "800", fontSize: "1.1rem" }}>₱{(calcWalkInTotal() - parseFloat(walkIn.amount_received)).toLocaleString()}</span>
-                    </div>
-                  )}
-                </>
-              )}
+{calcWalkInRoomOnly() > 0 && (
+  <div style={{ marginTop: "12px", background: "#f4f6f0", borderRadius: "10px", padding: "12px 14px" }}>
+    <div style={{ fontSize: ".68rem", fontWeight: "700", color: "#555", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "8px" }}>Bill Breakdown</div>
+    <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".83rem", color: "#555", marginBottom: "4px" }}>
+      <span>Room Rate</span>
+      <span style={{ fontWeight: "600" }}>₱{calcWalkInRoomOnly().toLocaleString()}</span>
+    </div>
+    {(walkIn.additional_charges || []).map(c => (
+      <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: ".83rem", color: "#555", marginBottom: "4px" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+          {c.from_restaurant && <RiRestaurantLine size={11} color="#b45309" />}
+          • {c.name}
+        </span>
+        <span style={{ fontWeight: "600" }}>₱{parseFloat(c.amount).toLocaleString()}</span>
+      </div>
+    ))}
+    <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".88rem", fontWeight: "700", borderTop: "1px solid #ddd", paddingTop: "6px", marginTop: "4px" }}>
+      <span style={{ color: "#333" }}>Total</span>
+      <span style={{ color: "#1565c0" }}>₱{calcWalkInTotal().toLocaleString()}</span>
+    </div>
+    {walkInPayLater && (
+      <div style={{ marginTop: "8px", fontSize: ".78rem", color: "#e65100", fontStyle: "italic" }}>
+        ⚠ Full amount of ₱{calcWalkInTotal().toLocaleString()} will be collected at check-out.
+      </div>
+    )}
+  </div>
+)}
+
+{!walkInPayLater && (
+  <>
+    <div style={{ marginTop: "12px", marginBottom: "10px" }}>
+      <label className="flabel" style={{ display: "block", fontSize: ".8rem", fontWeight: "700", color: "#555", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.4px" }}>Amount Received (₱)</label>
+      <input
+        type="number" className="fi"
+        style={{ fontSize: "1rem", fontWeight: "700", MozAppearance: "textfield" }}
+        onWheel={e => e.target.blur()}
+        value={walkIn.amount_received || ""}
+        onChange={e => setWalkIn({ ...walkIn, amount_received: e.target.value })}
+        placeholder="Enter amount given by guest"
+        onFocus={e => e.target.style.borderColor = "#1565c0"}
+        onBlur={e => e.target.style.borderColor = "#ccdacc"}
+      />
+    </div>
+    {parseFloat(walkIn.amount_received || 0) > calcWalkInTotal() && calcWalkInTotal() > 0 && (
+      <div style={{ background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+        <span style={{ color: "#1b5e20", fontWeight: "600", fontSize: "0.9rem" }}>💵 Change to return</span>
+        <span style={{ color: "#1b5e20", fontWeight: "700", fontSize: "1.2rem" }}>₱{(parseFloat(walkIn.amount_received) - calcWalkInTotal()).toLocaleString()}</span>
+      </div>
+    )}
+    {parseFloat(walkIn.amount_received || 0) > 0 && parseFloat(walkIn.amount_received || 0) < calcWalkInTotal() && (
+      <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ color: "#e65100", fontWeight: "700", fontSize: "0.88rem" }}>⚠ Balance due at Check-Out</span>
+        <span style={{ color: "#e65100", fontWeight: "800", fontSize: "1.1rem" }}>₱{(calcWalkInTotal() - parseFloat(walkIn.amount_received)).toLocaleString()}</span>
+      </div>
+    )}
+  </>
+)}
             </div>
 
             <div className="msec">
@@ -210,7 +235,7 @@ export default function WalkInModal({
               <textarea className="fi" rows={2} style={{ resize: "vertical" }} value={walkIn.notes} onChange={e => setWalkIn({ ...walkIn, notes: e.target.value })} placeholder="Any special requests..." />
             </div>
 
-            {/* Additional Charges + Restaurant Add Ons */}
+
             <div className="msec">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
                 <div className="msec-title-blue" style={{ marginBottom: 0 }}><RiMoneyDollarCircleLine size={13} />Additional Charges</div>
@@ -246,7 +271,7 @@ export default function WalkInModal({
               Cancel
             </button>
             <button
-              onClick={onConfirm} disabled={savingWalkIn}
+              onClick={onConfirm} disabled={savingWalkIn || (!walkInPayLater && (!walkIn.amount_received || parseFloat(walkIn.amount_received || 0) <= 0))}
               style={{ flex: 2, padding: "11px", background: savingWalkIn ? "#aaa" : "#1565c0", border: "none", borderRadius: "10px", cursor: savingWalkIn ? "not-allowed" : "pointer", fontSize: ".88rem", fontWeight: "700", color: "#fff", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
             >
               <RiWalkLine size={15} />{savingWalkIn ? "Checking In..." : "Check In Now"}
@@ -267,6 +292,14 @@ export default function WalkInModal({
           }}
         />
       )}
+      {showRoomPicker && (
+          <RoomPickerModal
+            rooms={availableRooms}
+            selectedRoomId={walkIn.room_id}
+            onSelect={r => setWalkIn({ ...walkIn, room_id: r.id })}
+            onClose={() => setShowRoomPicker(false)}
+          />
+        )}
     </>
   );
 }

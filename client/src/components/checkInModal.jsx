@@ -187,9 +187,7 @@ const paidAmt = payLater
   const restaurantChargesCount = additionalCharges.filter(c => c.from_restaurant).length;
   const isProcessing = processing || sendingOrder;
 
-  // Confirm button is disabled when:
-  // - currently processing, OR
-  // - "Pay Now" is selected AND guest has not marked fully paid AND no valid amount has been entered
+
   const isConfirmDisabled = isProcessing || (!payLater && !fullyPaid && amtReceived <= 0);
 
   return (
