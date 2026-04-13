@@ -6,6 +6,7 @@ import {
   RiCheckDoubleLine, RiAlertLine, RiRefreshLine, RiHistoryLine,
 } from "react-icons/ri";
 import supabase from "../supabaseClient";
+import notifySound from "../assets/notify2.wav";
 
 const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -138,6 +139,9 @@ export default function Restaurant({ user }) {
   const [filterStatus, setFilterStatus] = useState("all");
   const [orderFilter,  setOrderFilter]  = useState("active");
 
+  const [delOrder,    setDelOrder]    = useState(null);   
+  const [deletingOrd, setDeletingOrd] = useState(false);  
+
   const [showModal,  setShowModal]  = useState(false);
   const [editItem,   setEditItem]   = useState(null);
   const [form,       setForm]       = useState(EMPTY_FORM);
@@ -149,6 +153,7 @@ export default function Restaurant({ user }) {
   const [delItem,    setDelItem]    = useState(null);
   const [deleting,   setDeleting]   = useState(false);
   const fileRef = useRef();
+  const audioRef = useRef(new Audio(notifySound));
 
   const canManage = user?.role === "admin" || user?.role === "restaurant";
 
@@ -156,12 +161,22 @@ export default function Restaurant({ user }) {
 
   useEffect(() => {
     fetchOrders();
-
+ 
+    const playNotification = () => {
+      try {
+        const audio = audioRef.current;
+        audio.currentTime = 0;
+        audio.play().catch(() => {}); 
+      } catch {}
+    };
+ 
     const channel = supabase
       .channel("restaurant_orders_rt")
       .on("postgres_changes", { event: "*", schema: "public", table: "restaurant_orders" }, payload => {
         if (payload.eventType === "INSERT") {
           if (payload.new.status === "pending") {
+            
+            playNotification();
             setNewOrderIds(prev => new Set([...prev, payload.new.id]));
             setTab("orders");
             setTimeout(() => {
@@ -173,6 +188,8 @@ export default function Restaurant({ user }) {
           const updatedOrder = payload.new;
           setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
           if (updatedOrder.status === "pending") {
+           
+            playNotification();
             setNewOrderIds(prev => new Set([...prev, updatedOrder.id]));
             setTab("orders");
             setTimeout(() => {
@@ -184,10 +201,9 @@ export default function Restaurant({ user }) {
         }
       })
       .subscribe();
-
+ 
     return () => supabase.removeChannel(channel);
   }, []);
-
   const fetchItems = async () => {
     setLoading(true);
     const { data } = await supabase.from("restaurant_items").select("*").order("created_at", { ascending: false });
@@ -208,6 +224,19 @@ export default function Restaurant({ user }) {
       .eq("id", id);
   };
 
+  const deleteOrder = (order) => {
+    setDelOrder(order);
+  };
+ 
+  const confirmDeleteOrder = async () => {
+    if (!delOrder) return;
+    setDeletingOrd(true);
+    setOrders(prev => prev.filter(o => o.id !== delOrder.id));
+    await supabase.from("restaurant_orders").delete().eq("id", delOrder.id);
+    setDeletingOrd(false);
+    setDelOrder(null);
+  };
+ 
   const openAdd = () => {
     setEditItem(null); setForm(EMPTY_FORM); setImgFile(null); setImgPreview("");
     setError(""); setSuccess(""); setShowModal(true);
@@ -473,7 +502,7 @@ export default function Restaurant({ user }) {
                     const sCfg  = ORDER_STATUS_CFG[order.status] || ORDER_STATUS_CFG.pending;
                     const isNew = newOrderIds.has(order.id);
                     const itms  = Array.isArray(order.items) ? order.items : [];
-
+ 
                     return (
                       <div key={order.id} className={`order-card ${order.status}${isNew ? " new-pulse" : ""}`}>
                         <div className="order-hdr">
@@ -495,7 +524,7 @@ export default function Restaurant({ user }) {
                             <sCfg.Icon size={13} /> {sCfg.label}
                           </span>
                         </div>
-
+ 
                         <div className="order-body">
                           <div className="order-items-list">
                             {itms.map((it, idx) => (
@@ -516,9 +545,29 @@ export default function Restaurant({ user }) {
                             <div className="order-time">{timeAgo(order.created_at)}</div>
                           )}
                         </div>
-
-                        {order.status !== "done" && order.status !== "queued" && (
-                          <div className="order-actions">
+ 
+                        {/* ── Actions row — shown for ALL statuses ── */}
+                        <div className="order-actions" style={{ justifyContent: "space-between" }}>
+ 
+                          {/* Delete — always bottom left */}
+                          <button
+                            onClick={() => deleteOrder(order)}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: "5px",
+                              padding: "9px 14px", borderRadius: "9px", border: "none",
+                              background: "#fff1f1", color: "#dc2626",
+                              fontWeight: "700", fontSize: ".78rem",
+                              fontFamily: "Arial,sans-serif", cursor: "pointer",
+                              transition: "background .15s",
+                            }}
+                            onMouseOver={e => e.currentTarget.style.background = "#fee2e2"}
+                            onMouseOut={e =>  e.currentTarget.style.background = "#fff1f1"}
+                          >
+                            <RiDeleteBinLine size={14} /> Delete
+                          </button>
+ 
+                          {/* Status progression buttons — right side */}
+                          <div style={{ display: "flex", gap: "8px" }}>
                             {order.status === "pending" && (
                               <button className="order-action-btn oab-prepare" onClick={() => updateOrderStatus(order.id, "preparing")}>
                                 <RiTimeLine size={14} /> Start Preparing
@@ -535,10 +584,11 @@ export default function Restaurant({ user }) {
                               </button>
                             )}
                           </div>
-                        )}
+                        </div>
                       </div>
                     );
                   })}
+ 
                 </div>
               )
             }
@@ -637,6 +687,276 @@ export default function Restaurant({ user }) {
                 onClick={handleDelete} disabled={deleting}>
                 {deleting ? "Deleting…" : "Yes, Delete"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+       {delOrder && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 1100,
+            background: "rgba(0,0,0,0.55)",
+            backdropFilter: "blur(3px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "20px",
+          }}
+          onClick={() => !deletingOrd && setDelOrder(null)}
+        >
+          <div
+            style={{
+              background: "#fff", borderRadius: "20px",
+              width: "min(420px, 95vw)",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.25)",
+              fontFamily: "Arial, sans-serif",
+              overflow: "hidden",
+              animation: "fadeUp .18s ease",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{
+              background: "linear-gradient(135deg, #b71c1c, #e53935)",
+              padding: "22px 26px",
+              display: "flex", alignItems: "center", gap: "14px",
+              position: "relative", overflow: "hidden",
+            }}>
+              {/* decorative circle */}
+              <div style={{
+                position: "absolute", width: "120px", height: "120px",
+                borderRadius: "50%", border: "20px solid rgba(255,255,255,0.08)",
+                top: "-40px", right: "-30px", pointerEvents: "none",
+              }} />
+              <div style={{
+                width: "44px", height: "44px", borderRadius: "50%",
+                background: "rgba(255,255,255,0.15)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+              }}>
+                <RiDeleteBinLine size={20} color="#fff" />
+              </div>
+              <div>
+                <div style={{ color: "#fff", fontWeight: "700", fontSize: "1rem" }}>
+                  Delete Order
+                </div>
+                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: ".78rem", marginTop: "2px" }}>
+                  This action cannot be undone
+                </div>
+              </div>
+              <button
+                onClick={() => !deletingOrd && setDelOrder(null)}
+                style={{
+                  marginLeft: "auto", background: "rgba(255,255,255,0.15)",
+                  border: "none", width: "30px", height: "30px",
+                  borderRadius: "50%", cursor: deletingOrd ? "not-allowed" : "pointer",
+                  color: "#fff", fontSize: "1.1rem",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0, position: "relative", zIndex: 1,
+                }}
+              >
+                ×
+              </button>
+            </div>
+ 
+            {/* Body */}
+            <div style={{ padding: "24px 26px" }}>
+              {/* Order summary */}
+              <div style={{
+                background: "#fafafa", border: "1px solid #f0f0f0",
+                borderRadius: "12px", padding: "14px 16px", marginBottom: "18px",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
+                  <div>
+                    <div style={{ fontWeight: "700", fontSize: ".95rem", color: "#1a1a1a" }}>
+                      {delOrder.guest_name}
+                    </div>
+                    <div style={{ fontSize: ".76rem", color: "#8a9a8a", marginTop: "2px" }}>
+                      Room {delOrder.room_number || "—"}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: ".68rem", fontWeight: "700", padding: "3px 10px",
+                    borderRadius: "20px", textTransform: "capitalize",
+                    background: ORDER_STATUS_CFG[delOrder.status]?.bg || "#f3f4f6",
+                    color: ORDER_STATUS_CFG[delOrder.status]?.color || "#555",
+                  }}>
+                    {ORDER_STATUS_CFG[delOrder.status]?.label || delOrder.status}
+                  </span>
+                </div>
+ 
+                {/* Items list */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "10px" }}>
+                  {(Array.isArray(delOrder.items) ? delOrder.items : []).map((it, i) => (
+                    <div key={i} style={{
+                      display: "flex", justifyContent: "space-between",
+                      fontSize: ".82rem", color: "#555",
+                    }}>
+                      <span>{it.name} <span style={{ color: "#aaa" }}>×{it.qty}</span></span>
+                      <span style={{ fontWeight: "600" }}>₱{parseFloat(it.subtotal).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+ 
+                <div style={{
+                  display: "flex", justifyContent: "space-between",
+                  borderTop: "1px dashed #e8e8e8", paddingTop: "8px",
+                  fontWeight: "700", fontSize: ".88rem",
+                }}>
+                  <span style={{ color: "#555" }}>Total</span>
+                  <span style={{ color: "#07713c" }}>₱{parseFloat(delOrder.total_amount).toLocaleString()}</span>
+                </div>
+              </div>
+ 
+              {/* Warning text */}
+              <div style={{
+                background: "#fff3f3", border: "1px solid #ffcdd2",
+                borderRadius: "10px", padding: "11px 14px", marginBottom: "20px",
+                display: "flex", gap: "8px", alignItems: "flex-start",
+                fontSize: ".82rem", color: "#c62828", lineHeight: "1.5",
+              }}>
+                <span style={{ flexShrink: 0, fontSize: "1rem" }}>⚠️</span>
+                <span>
+                  Deleting this order will permanently remove it from the system.
+                  {delOrder.status === "pending" || delOrder.status === "preparing"
+                    ? " The kitchen will no longer see this order."
+                    : ""}
+                </span>
+              </div>
+ 
+              {/* Buttons */}
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  onClick={() => setDelOrder(null)}
+                  disabled={deletingOrd}
+                  style={{
+                    flex: 1, padding: "12px", background: "#fff",
+                    border: "1.5px solid #e0e0e0", borderRadius: "10px",
+                    cursor: deletingOrd ? "not-allowed" : "pointer",
+                    fontSize: ".88rem", fontWeight: "600", color: "#666",
+                    fontFamily: "Arial, sans-serif",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteOrder}
+                  disabled={deletingOrd}
+                  style={{
+                    flex: 2, padding: "12px", border: "none", borderRadius: "10px",
+                    background: deletingOrd ? "#aaa" : "#dc2626",
+                    cursor: deletingOrd ? "not-allowed" : "pointer",
+                    fontSize: ".88rem", fontWeight: "700", color: "#fff",
+                    fontFamily: "Arial, sans-serif",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: "7px",
+                    boxShadow: deletingOrd ? "none" : "0 4px 12px rgba(220,38,38,0.30)",
+                    transition: "background .15s",
+                  }}
+                >
+                  <RiDeleteBinLine size={15} />
+                  {deletingOrd ? "Deleting…" : "Yes, Delete Order"}
+                </button>
+              </div>
+            </div>
+          </div>
+ 
+          <style>{`
+            @keyframes fadeUp {
+              from { transform: translateY(20px); opacity: 0; }
+              to   { transform: translateY(0);    opacity: 1; }
+            }
+          `}</style>
+        </div>
+      )}
+            {delOrder && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 1100,
+            background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "20px",
+          }}
+          onClick={() => !deletingOrd && setDelOrder(null)}
+        >
+          <div
+            style={{
+              background: "#fff", borderRadius: "20px",
+              width: "min(420px, 95vw)",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.25)",
+              fontFamily: "Arial,sans-serif", overflow: "hidden",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{
+              background: "linear-gradient(135deg,#b71c1c,#e53935)",
+              padding: "22px 26px",
+              display: "flex", alignItems: "center", gap: "14px",
+              position: "relative", overflow: "hidden",
+            }}>
+              <div style={{ position: "absolute", width: "120px", height: "120px", borderRadius: "50%", border: "20px solid rgba(255,255,255,0.08)", top: "-40px", right: "-30px", pointerEvents: "none" }} />
+              <div style={{ width: "44px", height: "44px", borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <RiDeleteBinLine size={20} color="#fff" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: "#fff", fontWeight: "700", fontSize: "1rem" }}>Delete Order</div>
+                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: ".78rem", marginTop: "2px" }}>This action cannot be undone</div>
+              </div>
+              <button onClick={() => !deletingOrd && setDelOrder(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", width: "30px", height: "30px", borderRadius: "50%", cursor: "pointer", color: "#fff", fontSize: "1.1rem", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1 }}>×</button>
+            </div>
+ 
+            {/* Body */}
+            <div style={{ padding: "22px 26px" }}>
+              {/* Order summary card */}
+              <div style={{ background: "#fafafa", border: "1px solid #f0f0f0", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
+                  <div>
+                    <div style={{ fontWeight: "700", fontSize: ".95rem", color: "#1a1a1a" }}>{delOrder.guest_name}</div>
+                    <div style={{ fontSize: ".76rem", color: "#8a9a8a", marginTop: "2px" }}>Room {delOrder.room_number || "—"}</div>
+                  </div>
+                  <span style={{
+                    fontSize: ".68rem", fontWeight: "700", padding: "3px 10px", borderRadius: "20px", textTransform: "capitalize",
+                    background: ORDER_STATUS_CFG[delOrder.status]?.bg || "#f3f4f6",
+                    color: ORDER_STATUS_CFG[delOrder.status]?.color || "#555",
+                  }}>
+                    {ORDER_STATUS_CFG[delOrder.status]?.label || delOrder.status}
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "10px" }}>
+                  {(Array.isArray(delOrder.items) ? delOrder.items : []).map((it, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: ".82rem", color: "#555" }}>
+                      <span>{it.name} <span style={{ color: "#aaa" }}>×{it.qty}</span></span>
+                      <span style={{ fontWeight: "600" }}>₱{parseFloat(it.subtotal).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed #e8e8e8", paddingTop: "8px", fontWeight: "700", fontSize: ".88rem" }}>
+                  <span style={{ color: "#555" }}>Total</span>
+                  <span style={{ color: "#07713c" }}>₱{parseFloat(delOrder.total_amount).toLocaleString()}</span>
+                </div>
+              </div>
+ 
+              {/* Warning */}
+              <div style={{ background: "#fff3f3", border: "1px solid #ffcdd2", borderRadius: "10px", padding: "11px 14px", marginBottom: "20px", display: "flex", gap: "8px", alignItems: "flex-start", fontSize: ".82rem", color: "#c62828", lineHeight: "1.5" }}>
+                <span style={{ flexShrink: 0 }}>⚠️</span>
+                <span>
+                  Permanently removes this order from the system.
+                  {(delOrder.status === "pending" || delOrder.status === "preparing") && " The kitchen will no longer see this order."}
+                  {delOrder.status === "queued" && " This pre-order will be cancelled."}
+                </span>
+              </div>
+ 
+              {/* Buttons */}
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button onClick={() => setDelOrder(null)} disabled={deletingOrd}
+                  style={{ flex: 1, padding: "12px", background: "#fff", border: "1.5px solid #e0e0e0", borderRadius: "10px", cursor: deletingOrd ? "not-allowed" : "pointer", fontSize: ".88rem", fontWeight: "600", color: "#666", fontFamily: "Arial,sans-serif" }}>
+                  Cancel
+                </button>
+                <button onClick={confirmDeleteOrder} disabled={deletingOrd}
+                  style={{ flex: 2, padding: "12px", border: "none", borderRadius: "10px", background: deletingOrd ? "#aaa" : "#dc2626", cursor: deletingOrd ? "not-allowed" : "pointer", fontSize: ".88rem", fontWeight: "700", color: "#fff", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px", boxShadow: deletingOrd ? "none" : "0 4px 12px rgba(220,38,38,0.30)" }}>
+                  <RiDeleteBinLine size={15} />
+                  {deletingOrd ? "Deleting…" : "Yes, Delete Order"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

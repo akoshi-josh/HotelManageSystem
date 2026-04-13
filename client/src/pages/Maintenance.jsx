@@ -254,46 +254,60 @@ export default function Maintenance({ user }) {
 
     const seen = new Set();
     const deduped = built.filter(t => {
-      if (seen.has(t.res_id + t.type)) return false;
-      seen.add(t.res_id + t.type);
+      const key = (t.res_id || t.room_id) + t.type;
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
     });
-
-    // Rooms under maintenance or needs_cleaning → show as task card with "Mark as Ready" button
-    const { data: cleaningRooms } = await supabase.from("rooms").select("*").eq("status", "needs_cleaning");
+ 
+    // Rooms under maintenance → show as task card
     (maintRooms || []).forEach(r => {
-      if (!deduped.find(t => t.room_number === r.room_number)) {
+      if (!deduped.find(t => t.room_id === r.id && t.type === "room_damage")) {
         deduped.push({
-          id: `maint_${r.id}`, room_id: r.id, room_number: r.room_number,
-          type: "room_damage", guest_name: "—", time: "Under Maintenance",
-          status: "in_progress", notes: r.description || "", is_room_task: true,
+          id:           `maint_${r.id}`,
+          room_id:      r.id,
+          room_number:  r.room_number,
+          type:         "room_damage",
+          guest_name:   "—",
+          time:         "Under Maintenance",
+          status:       "in_progress",
+          notes:        r.description || "",
+          is_room_task: true,
         });
       }
     });
-    // For needs_cleaning rooms, check if the latest checked_out reservation
-    // already has cleaning_status = 'done' — if so, don't re-add the task
-    // Also skip rooms that already have a proper task card from postData/earlyCheckoutData
-    const cleaningRoomIds = (cleaningRooms || []).map(r => r.id);
-    if (cleaningRoomIds.length > 0) {
-      const { data: doneCleanRes } = await supabase.from("reservations")
-        .select("room_id").in("room_id", cleaningRoomIds)
-        .eq("status", "checked_out").eq("cleaning_status", "done");
-      const doneRoomIds = new Set((doneCleanRes || []).map(r => r.room_id));
-      (cleaningRooms || []).forEach(r => {
-        if (doneRoomIds.has(r.id)) return; // cleaning already done — skip
-        // Skip if a proper task with res_id already exists for this room (from postData/earlyCheckoutData)
-        if (deduped.find(t => t.room_number === r.room_number && t.res_id)) return;
-        // No reservation-linked task found — create a room-only task card as fallback
-        if (!deduped.find(t => t.room_number === r.room_number)) {
-          deduped.push({
-            id: `clean_${r.id}`, room_id: r.id, room_number: r.room_number,
-            type: "post_checkout", guest_name: "Checked Out", time: "Needs Cleaning",
-            status: "pending", notes: "", is_room_task: true,
-          });
-        }
+ 
+    // Rooms with needs_cleaning status → show as cleaning task in All Tasks
+    const { data: cleaningRooms } = await supabase
+      .from("rooms")
+      .select("*")
+      .eq("status", "needs_cleaning");
+ 
+    (cleaningRooms || []).forEach(r => {
+      // Skip if there's already a reservation-linked task for this room
+      // (means postData/earlyCheckoutData already added it)
+      const alreadyHasTask = deduped.find(
+        t => t.room_number === r.room_number && t.res_id
+      );
+      if (alreadyHasTask) return;
+ 
+      // Skip if already added as a room task
+      if (deduped.find(t => t.room_id === r.id)) return;
+ 
+      // Add a standalone cleaning task card
+      deduped.push({
+        id:           `clean_${r.id}`,
+        room_id:      r.id,
+        room_number:  r.room_number,
+        type:         "post_checkout",   // appears in All Tasks + Post Check-Out tab
+        guest_name:   "Checked Out",
+        time:         "Needs Cleaning",
+        status:       "pending",         // appears in Needs Cleaning tab
+        notes:        "",
+        is_room_task: true,
       });
-    }
-
+    });
+ 
     setTasks(deduped);
     if (!silent) setLoading(false);
   };
@@ -402,50 +416,79 @@ export default function Maintenance({ user }) {
   const updateStatus = async (task, newStatus) => {
     setUpdating(task.id);
     if (task.res_id && !task.is_room_task) {
-      await supabase.from("reservations").update({ cleaning_status: newStatus }).eq("id", task.res_id);
+      await supabase
+        .from("reservations")
+        .update({ cleaning_status: newStatus })
+        .eq("id", task.res_id);
     }
-    // When marked as done → set room to Available (ready to rent)
+ 
     if (newStatus === "done") {
       let roomId = task.room_id || null;
       if (!roomId && task.res_id) {
-        const { data: rd } = await supabase.from("reservations")
-          .select("room_id").eq("id", task.res_id).single();
+        const { data: rd } = await supabase
+          .from("reservations")
+          .select("room_id")
+          .eq("id", task.res_id)
+          .single();
         roomId = rd?.room_id || null;
       }
       if (roomId) {
-        await supabase.from("rooms").update({ status: "available" }).eq("id", roomId);
-        setAllRooms(prev => prev.map(r => r.id === roomId ? { ...r, status: "available" } : r));
-        // Persist cleaning_status on the latest checkout reservation for this room
-        const { data: resForRoom } = await supabase.from("reservations")
-          .select("id").eq("room_id", roomId).eq("status", "checked_out")
-          .order("checked_out_at", { ascending: false }).limit(1).maybeSingle();
+        await supabase
+          .from("rooms")
+          .update({ status: "available" })
+          .eq("id", roomId);
+ 
+        setAllRooms(prev =>
+          prev.map(r => r.id === roomId ? { ...r, status: "available" } : r)
+        );
+        const { data: resForRoom } = await supabase
+          .from("reservations")
+          .select("id")
+          .eq("room_id", roomId)
+          .eq("status", "checked_out")
+          .order("check_out", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+ 
         if (resForRoom?.id) {
-          await supabase.from("reservations").update({ cleaning_status: "done" }).eq("id", resForRoom.id);
+          await supabase
+            .from("reservations")
+            .update({ cleaning_status: "done" })
+            .eq("id", resForRoom.id);
         }
       }
     }
+ 
     setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
     setUpdating(null);
+ 
     if (newStatus === "done") {
-      setSuccessMsg(`Room ${task.room_number} marked as clean!`);
+      setSuccessMsg(`Room ${task.room_number} marked as clean and available!`);
       setTimeout(() => setSuccessMsg(""), 2500);
       supabase.from("notifications").insert({
-        type: "cleaning_done",
-        title: `Room ${task.room_number} — Cleaning Done`,
-        message: `${task.type === "pre_checkin" ? "Pre Check-In" : "Post Check-Out"} cleaning completed. Guest: ${task.guest_name}.`,
-        entity_type: "reservation", entity_id: task.res_id || "",
-        room_number: task.room_number, guest_name: task.guest_name,
-        nav_target: task.type === "post_checkout" ? "Check-Out" : "Check-In",
+        type:        "cleaning_done",
+        title:       `Room ${task.room_number} — Cleaning Done`,
+        message:     `${task.type === "pre_checkin" ? "Pre Check-In" : "Post Check-Out"} cleaning completed. Guest: ${task.guest_name}.`,
+        entity_type: "reservation",
+        entity_id:   task.res_id || "",
+        room_number: task.room_number,
+        guest_name:  task.guest_name,
+        nav_target:  task.type === "post_checkout" ? "Check-Out" : "Check-In",
       });
     }
   };
 
   const countBy = s => tasks.filter(t => t.status === s).length;
-  const filtered = filter === "all"               ? tasks.filter(t => t.status !== "done")
-    : filter === "done"                           ? tasks.filter(t => t.status === "done")
-    : filter === "pending_inprogress"             ? tasks.filter(t => t.status !== "done" && t.type !== "inspection")
-    : filter === "inspection"                     ? tasks.filter(t => t.type === "inspection")
-    : filter === "rooms"                          ? []
+  const filtered = filter === "all"
+    ? tasks.filter(t => t.status !== "done")
+    : filter === "done" 
+    ? tasks.filter(t => t.status === "done")
+    : filter === "pending_inprogress"
+    ? tasks.filter(t => t.status !== "done" && t.type !== "inspection")
+    : filter === "inspection"
+    ? tasks.filter(t => t.type === "inspection")
+    : filter === "rooms"
+    ? []
     : tasks.filter(t => t.type === filter && t.status !== "done");
 
   const STAT_CARDS = [

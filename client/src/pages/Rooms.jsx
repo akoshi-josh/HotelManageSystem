@@ -8,10 +8,11 @@ import supabase from "../supabaseClient";
 
 
 const STATUS_CFG = {
-  available:   { bg: "#ecfdf5", color: "#07713c", label: "Available",   Icon: RiCheckboxCircleLine },
-  occupied:    { bg: "#fce4ec", color: "#c62828", label: "Occupied",    Icon: RiCalendarLine },
-  maintenance: { bg: "#fff3e0", color: "#e65100", label: "Maintenance", Icon: RiToolsLine },
-  reserved:    { bg: "#e3f2fd", color: "#1565c0", label: "Reserved",    Icon: RiCalendarLine },
+  available:      { bg: "#ecfdf5", color: "#07713c", label: "Available",     Icon: RiCheckboxCircleLine },
+  occupied:       { bg: "#fce4ec", color: "#c62828", label: "Occupied",      Icon: RiCalendarLine },
+  maintenance:    { bg: "#fff3e0", color: "#e65100", label: "Maintenance",   Icon: RiToolsLine },
+  reserved:       { bg: "#e3f2fd", color: "#1565c0", label: "Reserved",      Icon: RiCalendarLine },
+  needs_cleaning: { bg: "#fce4ec", color: "#c62828", label: "Needs Cleaning", Icon: RiToolsLine },
 };
 
 const BED_TYPES   = ["Single", "Queen", "Master"];

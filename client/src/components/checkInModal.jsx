@@ -107,82 +107,115 @@ export default function CheckInModal({ selected, onClose, onConfirm, processing 
     ? `${nights} night${nights !== 1 ? "s" : ""}`
     : "Open-ended";
 
+
+
   const handleConfirm = async () => {
     setSendingOrder(true);
 
-    if (selected?.id) {
-      const { data: queuedOrders } = await supabase
-        .from("restaurant_orders")
-        .select("*")
-        .eq("reservation_id", selected.id)
-        .eq("status", "queued");
+    try {
 
-      if (queuedOrders && queuedOrders.length > 0) {
-        await supabase
+      const { data: roomCheck } = await supabase
+        .from("rooms")
+        .select("status, room_number")
+        .eq("id", selected.room_id)
+        .single();
+
+      if (roomCheck && roomCheck.status === "occupied") {
+        alert(
+          `⚠️ Room ${selected.room_number} is already occupied.\n\n` +
+          `Another guest has already checked into this room.\n` +
+          `Please use Edit Room to assign a different room.`
+        );
+        setSendingOrder(false);
+        onClose();
+        return;
+      }
+
+     
+      if (selected?.id) {
+        const { data: queuedOrders } = await supabase
           .from("restaurant_orders")
-          .update({ status: "pending", updated_at: new Date().toISOString() })
+          .select("*")
           .eq("reservation_id", selected.id)
           .eq("status", "queued");
 
-        for (const order of queuedOrders) {
-          const items   = Array.isArray(order.items) ? order.items : [];
-          const summary = items.map(i => `${i.name} ×${i.qty}`).join(", ");
-          await supabase.from("notifications").insert([{
-            type:        "restaurant_order",
-            title:       `🍽 New Order — Room ${selected.room_number || "?"}`,
-            message:     `${selected.guest_name}: ${summary} · ₱${parseFloat(order.total_amount).toLocaleString()}`,
-            nav_target:  "Restaurant",
-            is_read:     false,
-            target_role: "restaurant",
-          }]);
+        if (queuedOrders && queuedOrders.length > 0) {
+          await supabase
+            .from("restaurant_orders")
+            .update({ status: "pending", updated_at: new Date().toISOString() })
+            .eq("reservation_id", selected.id)
+            .eq("status", "queued");
+
+          for (const order of queuedOrders) {
+            const items   = Array.isArray(order.items) ? order.items : [];
+            const summary = items.map(i => `${i.name} ×${i.qty}`).join(", ");
+            await supabase.from("notifications").insert([{
+              type:        "restaurant_order",
+              title:       `🍽 New Order — Room ${selected.room_number || "?"}`,
+              message:     `${selected.guest_name}: ${summary} · ₱${parseFloat(order.total_amount).toLocaleString()}`,
+              nav_target:  "Restaurant",
+              is_read:     false,
+              target_role: "restaurant",
+            }]);
+          }
         }
       }
+
+      // Send fresh restaurant add-ons to kitchen
+      const freshRestaurantCharges = additionalCharges.filter(c =>
+        c.from_restaurant && !allResCharges.some(rc => rc.id === c.id)
+      );
+
+      if (freshRestaurantCharges.length > 0) {
+        const orderItems = freshRestaurantCharges.map(c => ({
+          id:       c.restaurant_item_id || c.id,
+          name:     c.name.replace(/^\[Restaurant\] /, "").replace(/ ×\d+$/, ""),
+          price:    c.unit_price || c.amount,
+          qty:      c.qty || 1,
+          subtotal: parseFloat(c.amount),
+        }));
+        const orderTotal = freshRestaurantCharges.reduce(
+          (s, c) => s + parseFloat(c.amount), 0
+        );
+
+        await supabase.from("restaurant_orders").insert([{
+          reservation_id: selected?.id || null,
+          guest_name:     selected.guest_name,
+          room_number:    String(selected.room_number || ""),
+          items:          orderItems,
+          total_amount:   orderTotal,
+          status:         "pending",
+        }]);
+
+        const summary = orderItems.map(i => `${i.name} ×${i.qty}`).join(", ");
+        await supabase.from("notifications").insert([{
+          type:        "restaurant_order",
+          title:       `🍽 New Order — Room ${selected.room_number || "?"}`,
+          message:     `${selected.guest_name}: ${summary} · ₱${orderTotal.toLocaleString()}`,
+          nav_target:  "Restaurant",
+          is_read:     false,
+          target_role: "restaurant",
+        }]);
+      }
+
+      const paidAmt = payLater
+        ? reservationDownpayment
+        : fullyPaid
+          ? totalBill
+          : reservationDownpayment + amtReceived;
+
+      const isPartial = !payLater && !fullyPaid && paidAmt < totalBill && paidAmt > 0;
+
+      setSendingOrder(false);
+      onConfirm({ paidAmt, payLater, isPartial, paymentMethod, additionalCharges });
+
+    } catch (err) {
+      console.error("handleConfirm error:", err);
+      alert("Something went wrong: " + (err.message || "Unknown error"));
+      setSendingOrder(false);
     }
-
-    const freshRestaurantCharges = additionalCharges.filter(c =>
-      c.from_restaurant && !allResCharges.some(rc => rc.id === c.id)
-    );
-
-    if (freshRestaurantCharges.length > 0) {
-      const orderItems = freshRestaurantCharges.map(c => ({
-        id:       c.restaurant_item_id || c.id,
-        name:     c.name.replace(/^\[Restaurant\] /, "").replace(/ ×\d+$/, ""),
-        price:    c.unit_price || c.amount,
-        qty:      c.qty || 1,
-        subtotal: parseFloat(c.amount),
-      }));
-      const orderTotal = freshRestaurantCharges.reduce((s, c) => s + parseFloat(c.amount), 0);
-
-      await supabase.from("restaurant_orders").insert([{
-        reservation_id: selected?.id || null,
-        guest_name:     selected.guest_name,
-        room_number:    String(selected.room_number || ""),
-        items:          orderItems,
-        total_amount:   orderTotal,
-        status:         "pending",
-      }]);
-
-      const summary = orderItems.map(i => `${i.name} ×${i.qty}`).join(", ");
-      await supabase.from("notifications").insert([{
-        type:        "restaurant_order",
-        title:       `🍽 New Order — Room ${selected.room_number || "?"}`,
-        message:     `${selected.guest_name}: ${summary} · ₱${orderTotal.toLocaleString()}`,
-        nav_target:  "Restaurant",
-        is_read:     false,
-        target_role: "restaurant",
-      }]);
-    }
-
-const paidAmt = payLater
-  ? reservationDownpayment
-  : fullyPaid
-    ? totalBill
-    : reservationDownpayment + amtReceived;
-    const isPartial = !payLater && !fullyPaid && paidAmt < totalBill && paidAmt > 0;
-
-    setSendingOrder(false);
-    onConfirm({ paidAmt, payLater, isPartial, paymentMethod, additionalCharges });
   };
+ 
 
   const restaurantChargesCount = additionalCharges.filter(c => c.from_restaurant).length;
   const isProcessing = processing || sendingOrder;
@@ -211,50 +244,82 @@ const paidAmt = payLater
 
           <div style={{ padding: "24px 30px" }}>
 
-            <div style={card}>
-              <div style={sectionTitle("#07713c")}>
-                <RiUserLine size={13} /> Reservation Summary
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                {[
-                  ["Guest",     selected.guest_name],
-                  ["Room",      `Room ${selected.room_number}`],
-                  ["Check-In",  selected.check_in],
-                  ["Check-Out", selected.check_out || "Open Stay"],
-                  ["Duration",  durationLabel],
-                  ["Room Rate", `₱${roomrate.toLocaleString()}`],
-                ].map(([k, v]) => (
-                  <div key={k} style={{ background: "#f8f9fa", borderRadius: "8px", padding: "10px 12px" }}>
-                    <div style={{ color: "#aaa", fontSize: "0.75rem", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
-                    <div style={{ fontWeight: "600", color: "#222", marginTop: "2px", fontSize: "0.88rem" }}>{v}</div>
-                  </div>
-                ))}
-              </div>
+<div style={card}>
+  <div style={sectionTitle("#07713c")}>
+    <RiUserLine size={13} /> Reservation Summary
+  </div>
+ 
+  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+    {[
+      ["Guest",     selected.guest_name],
+      ["Room",      `Room ${selected.room_number}`],
+      ["Check-In",  selected.check_in],
+      ["Check-Out", selected.check_out || "Open Stay"],
+      ["Duration",  durationLabel],
+      ["Room Rate", `₱${roomrate.toLocaleString()}`],
+    ].map(([k, v]) => (
+      <div key={k} style={{ background: "#f8f9fa", borderRadius: "8px", padding: "10px 12px" }}>
+        <div style={{ color: "#aaa", fontSize: "0.75rem", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
+        <div style={{ fontWeight: "600", color: "#222", marginTop: "2px", fontSize: "0.88rem" }}>{v}</div>
+      </div>
+    ))}
+ 
+    {/* Notes row — full width, only when notes exist */}
+    {selected.notes && (
+      <div style={{
+        gridColumn: "1 / -1",
+        background: "#fffdf0",
+        border: "1px solid #f0de7a",
+        borderRadius: "8px",
+        padding: "10px 12px",
+        display: "flex",
+        gap: "8px",
+        alignItems: "flex-start",
+      }}>
+        <span style={{ fontSize: "1rem", flexShrink: 0, marginTop: "1px" }}>📝</span>
+        <div>
+          <div style={{
+            color: "#aaa", fontSize: "0.75rem", fontWeight: "700",
+            textTransform: "uppercase", marginBottom: "2px",
+          }}>
+            Notes / Special Requests
+          </div>
+          <div style={{
+            fontWeight: "500", color: "#7a6500",
+            fontSize: "0.88rem", lineHeight: "1.5",
+          }}>
+            {selected.notes}
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+ 
+  {/* Downpayment section — unchanged, keep as-is below this grid */}
+  {hasReservationDownpayment && (
+    <div style={{ marginTop: "10px", background: "#fff8e1", border: "1.5px solid #ffe082", borderRadius: "9px", padding: "11px 14px" }}>
+      <div style={{ fontSize: "0.72rem", fontWeight: "700", color: "#f57f17", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "8px" }}>
+        ⚡ 30% Downpayment on File
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+        {[
+          ["Grand Total", `₱${grandTotal.toLocaleString()}`],
+          ["Paid (30%)",  `₱${reservationDownpayment.toLocaleString()}`],
+          ["Balance Due", `₱${Math.max(0, baseTotal - reservationDownpayment + chargesTotal).toLocaleString()}`],
+        ].map(([lbl, val]) => (
+          <div key={lbl} style={{ background: "white", borderRadius: "7px", padding: "7px 10px", textAlign: "center" }}>
+            <div style={{ fontSize: "0.65rem", color: "#aaa", fontWeight: "700", textTransform: "uppercase", marginBottom: "2px" }}>{lbl}</div>
+            <div style={{ fontSize: "0.88rem", fontWeight: "700", color: lbl === "Balance Due" ? "#e65100" : "#555" }}>{val}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: "0.73rem", color: "#888", marginTop: "7px", fontStyle: "italic" }}>
+        Remaining balance will be collected at check-out.
+      </div>
+    </div>
+  )}
+</div>
 
-              {hasReservationDownpayment && (
-                <div style={{ marginTop: "10px", background: "#fff8e1", border: "1.5px solid #ffe082", borderRadius: "9px", padding: "11px 14px" }}>
-                  <div style={{ fontSize: "0.72rem", fontWeight: "700", color: "#f57f17", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "8px" }}>
-                    ⚡ 30% Downpayment on File
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
-                    {[
-                      ["Grand Total",   `₱${grandTotal.toLocaleString()}`],
-                      ["Paid (30%)",  `₱${reservationDownpayment.toLocaleString()}`],
-                      ["Balance Due", `₱${Math.max(0, baseTotal - reservationDownpayment + chargesTotal).toLocaleString()}`],
-                    ].map(([lbl, val]) => (
-                      <div key={lbl} style={{ background: "white", borderRadius: "7px", padding: "7px 10px", textAlign: "center" }}>
-                        <div style={{ fontSize: "0.65rem", color: "#aaa", fontWeight: "700", textTransform: "uppercase", marginBottom: "2px" }}>{lbl}</div>
-                        <div style={{ fontSize: "0.88rem", fontWeight: "700", color: lbl === "Balance Due" ? "#e65100" : "#555" }}>{val}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: "0.73rem", color: "#888", marginTop: "7px", fontStyle: "italic" }}>
-                    Remaining balance will be collected at check-out.
-                  </div>
-                </div>
-              )}
-
-            </div>
 
             <div style={card}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
