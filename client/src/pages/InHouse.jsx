@@ -109,6 +109,7 @@ export default function InHouse({ highlightId }) {
   const [extDate,         setExtDate]         = useState("");
   const [refundInfo,      setRefundInfo]      = useState(null);
   const [refundConfirmed, setRefundConfirmed] = useState(false);
+  const [availableRooms,  setAvailableRooms]  = useState([]);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -122,6 +123,14 @@ export default function InHouse({ highlightId }) {
       .eq("status", "checked_in")
       .order("check_in");
     setGuests((data || []).filter(r => r.status === "checked_in"));
+
+    const { data: roomData } = await supabase
+      .from("rooms")
+      .select("*")
+      .eq("status", "available")
+      .order("room_number");
+    setAvailableRooms(roomData || []);
+
     setLoading(false);
   };
 
@@ -129,20 +138,24 @@ export default function InHouse({ highlightId }) {
     try { return JSON.parse(res?.additional_charges || "[]"); } catch { return []; }
   };
 
-  const isInhouseCharge = (c) => !c.from_reservation && !c.from_checkin;
+  const isInhouseCharge = (c) => !c.from_reservation;
 
   const calcTotal = (res) => {
     return parseFloat(res.remaining_balance ?? 0);
   };
 
-  const computeNewBalance = (res, chargesList) => {
-    const checkinBase = parseFloat(res.checkin_balance ?? res.remaining_balance ?? 0);
-    const postCheckin = chargesList
-      .filter(c => isInhouseCharge(c))
-      .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
-    return parseFloat((checkinBase + postCheckin).toFixed(2));
-  };
 
+const computeNewBalance = (res, chargesList) => {
+  const currentBalance = parseFloat(res.remaining_balance ?? 0);
+  const currentInhouseSum = getCharges(res)
+    .filter(c => isInhouseCharge(c))
+    .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+  const newInhouseSum = chargesList
+    .filter(c => isInhouseCharge(c))
+    .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+  const diff = newInhouseSum - currentInhouseSum;
+  return parseFloat((currentBalance + diff).toFixed(2));
+};
   const nightsStayed = (checkIn) => Math.max(1, Math.floor((new Date() - new Date(checkIn)) / 86400000));
   const nightsLeft   = (checkOut) => checkOut ? Math.max(0, Math.ceil((new Date(checkOut) - new Date()) / 86400000)) : null;
 
@@ -209,35 +222,36 @@ export default function InHouse({ highlightId }) {
     fetchGuests();
   };
 
-const handleAddChargeObject = async (newCharges) => {
-  if (!newCharges?.length || !selected) return;
-  setSaving(true);
+  const handleAddChargeObject = async (newCharges) => {
+    if (!newCharges?.length || !selected) return;
+    setSaving(true);
 
-  const { data: fresh } = await supabase
-    .from("reservations")
-    .select("*, rooms(type, floor, price)")
-    .eq("id", selected.id)
-    .single();
+    const { data: fresh } = await supabase
+      .from("reservations")
+      .select("*, rooms(type, floor, price)")
+      .eq("id", selected.id)
+      .single();
 
-  const existing = getCharges(fresh);
-  const tagged   = newCharges.map(c => ({
-    id:              `rst-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    name:            c.name,
-    amount:          parseFloat(c.amount),
-    from_restaurant: true,
-  }));
-  const updated    = [...existing, ...tagged];
-  const newBalance = computeNewBalance(fresh, updated);
+    const existing = getCharges(fresh);
+    const tagged   = newCharges.map(c => ({
+      id:              `rst-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name:            c.name,
+      amount:          parseFloat(c.amount),
+      from_restaurant: true,
+    }));
+    const updated    = [...existing, ...tagged];
+    const newBalance = computeNewBalance(fresh, updated);
 
-  await supabase.from("reservations").update({
-    additional_charges: JSON.stringify(updated),
-    remaining_balance:  newBalance,
-  }).eq("id", selected.id);
+    await supabase.from("reservations").update({
+      additional_charges: JSON.stringify(updated),
+      remaining_balance:  newBalance,
+    }).eq("id", selected.id);
 
-  setSaving(false);
-  setSelected({ ...fresh, additional_charges: JSON.stringify(updated), remaining_balance: newBalance });
-  fetchGuests();
-};
+    setSaving(false);
+    setSelected({ ...fresh, additional_charges: JSON.stringify(updated), remaining_balance: newBalance });
+    fetchGuests();
+  };
+
   const calcPreview = (newDate) => {
     if (!selected || !newDate || !selected.check_in) return null;
 
@@ -278,6 +292,7 @@ const handleAddChargeObject = async (newCharges) => {
   };
 
   const handleSaveDateChange = async () => {
+    console.log("saving...", { extDate, selected: selected?.id, preview: calcPreview(extDate) });
     if (!selected || !extDate) return;
     const preview = calcPreview(extDate);
     if (!preview) return;
@@ -313,6 +328,26 @@ const handleAddChargeObject = async (newCharges) => {
         checkin_balance:   Math.max(0, newCheckinBalance),
       }).eq("id", selected.id);
 
+      const existingHistory = (() => { try { return JSON.parse(selected.payment_history || "[]"); } catch { return []; } })();
+        if (preview.extraNights > 0) {
+          existingHistory.push({
+            type:   "date_change_charge",
+            amount: preview.totalCharges,
+            date:   today,
+            note:   `Extended to ${extDate} (+${preview.extraNights} night${preview.extraNights !== 1 ? "s" : ""})`,
+          });
+        } else if (preview.diff > 0) {
+          existingHistory.push({
+            type:   "date_change_refund",
+            amount: preview.diff,
+            date:   today,
+            note:   `Shortened to ${extDate} (−${Math.abs(preview.extraNights)} night${Math.abs(preview.extraNights) !== 1 ? "s" : ""})`,
+          });
+        }
+        await supabase.from("reservations")
+          .update({ payment_history: JSON.stringify(existingHistory) })
+          .eq("id", selected.id);
+
       await logActivity({
         action:      `Changed check-out date: ${selected.guest_name}`,
         category:    "edit",
@@ -333,6 +368,93 @@ const handleAddChargeObject = async (newCharges) => {
       setExtending(false);
     }
   };
+
+  const handleRoomTransfer = async (preview, newRoomId, transferDate) => {
+    if (!selected || !preview) return;
+
+    const newRoom = preview.newRoom;
+    const currentBalance    = parseFloat(selected.remaining_balance ?? 0);
+    const currentCheckinBal = parseFloat(selected.checkin_balance ?? selected.remaining_balance ?? 0);
+
+    const newRemaining  = preview.extraCharge > 0
+      ? currentBalance + preview.extraCharge
+      : preview.refund > 0
+        ? Math.max(0, currentBalance - preview.refund)
+        : currentBalance;
+
+    const newCheckinBal = preview.extraCharge > 0
+      ? currentCheckinBal + preview.extraCharge
+      : preview.refund > 0
+        ? Math.max(0, currentCheckinBal - preview.refund)
+        : currentCheckinBal;
+
+    await supabase.from("reservations").update({
+      room_id:           newRoomId,
+      room_number:       newRoom.room_number,
+      total_amount:      preview.newTotalAmount,
+      remaining_balance: newRemaining,
+      checkin_balance:   newCheckinBal,
+    }).eq("id", selected.id);
+
+    await supabase.from("rooms").update({ status: "available" }).eq("id", selected.room_id);
+    await supabase.from("rooms").update({ status: "occupied"  }).eq("id", newRoomId);
+
+   const existingHistory = (() => { try { return JSON.parse(selected.payment_history || "[]"); } catch { return []; } })();
+      if (preview.extraCharge > 0) {
+        existingHistory.push({
+          type:   "room_transfer_charge",
+          amount: preview.extraCharge,
+          date:   today,
+          note:   `Transferred Room ${selected.room_number} → Room ${newRoom.room_number}`,
+        });
+      } else if (preview.refund > 0) {
+        existingHistory.push({
+          type:   "room_transfer_refund",
+          amount: preview.refund,
+          date:   today,
+          note:   `Transferred Room ${selected.room_number} → Room ${newRoom.room_number}`,
+        });
+      }
+      await supabase.from("reservations")
+        .update({ payment_history: JSON.stringify(existingHistory) })
+        .eq("id", selected.id);
+
+    await logActivity({
+      action:      `Room transfer: ${selected.guest_name}`,
+      category:    "edit",
+      details:     `Room ${selected.room_number} → Room ${newRoom.room_number} | Transfer date: ${transferDate} | ${preview.extraCharge > 0 ? `Extra: ₱${preview.extraCharge.toLocaleString()}` : preview.refund > 0 ? `Refund: ₱${preview.refund.toLocaleString()}` : "No price change"}`,
+      entity_type: "reservation",
+      entity_id:   selected.id,
+    });
+
+    const { data } = await supabase.from("reservations").select("*, rooms(type, floor, price)").eq("id", selected.id).single();
+    setSelected(data);
+    fetchGuests();
+  };
+
+const handleInhousePayment = async (reservationId, newAmountPaid, newBalance, paymentMethod, paid) => {
+  const { data } = await supabase
+    .from("reservations")
+    .select("*, rooms(type, floor, price)")
+    .eq("id", reservationId)
+    .single();
+
+  if (data) {
+    const history = (() => { try { return JSON.parse(data.payment_history || "[]"); } catch { return []; } })();
+    history.push({
+      type:   "inhouse_payment",
+      amount: paid,
+      date:   today,
+      note:   "Cash collected inhouse",
+    });
+    await supabase.from("reservations")
+      .update({ payment_history: JSON.stringify(history) })
+      .eq("id", reservationId);
+
+    setSelected({ ...data, payment_history: JSON.stringify(history), remaining_balance: newBalance });
+  }
+  fetchGuests();
+};
 
   const openModal  = (res) => { setSelected(res); setReqName(""); setReqAmt(""); setExtDate(""); setRefundInfo(null); setRefundConfirmed(false); };
   const closeModal = () => setSelected(null);
@@ -424,7 +546,7 @@ const handleAddChargeObject = async (newCharges) => {
         <InhouseModal
           selected={selected}
           onClose={closeModal}
-          charges={getCharges(selected)}
+          charges={getCharges(selected).filter(c => isInhouseCharge(c))}
           total={calcTotal(selected)}
           stayed={nightsStayed(selected.check_in)}
           left={nightsLeft(selected.check_out)}
@@ -445,6 +567,9 @@ const handleAddChargeObject = async (newCharges) => {
           refundInfo={refundInfo}
           refundConfirmed={refundConfirmed}
           setRefundConfirmed={setRefundConfirmed}
+          availableRooms={availableRooms}
+          onRoomTransfer={handleRoomTransfer}
+          onPayNow={handleInhousePayment}
         />
       )}
     </>

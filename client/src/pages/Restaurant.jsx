@@ -8,6 +8,69 @@ import {
 import supabase from "../supabaseClient";
 import notifySound from "../assets/notify2.wav";
 
+// ─── Audio Engine ─────────────────────────────────────────────────────────────
+// We keep a single AudioContext alive for the page lifetime.
+// The browser requires the context to be CREATED (or resumed) inside a user
+// gesture, so we do both in handleAllowSound → _unlockAndPlay().
+
+let _audioCtx    = null;   // created on first user click
+let _audioBuffer = null;   // decoded PCM from notify2.wav
+let _unlocked    = false;  // true after the user clicked "Allow Sound"
+
+const AUDIO_KEY = "rp_audio_ok";   // localStorage flag
+
+/** Fetch + decode the wav file into a reusable buffer. */
+async function _loadBuffer(ctx) {
+  if (_audioBuffer) return _audioBuffer;
+  const res        = await fetch(notifySound);
+  const rawBuf     = await res.arrayBuffer();
+  _audioBuffer     = await ctx.decodeAudioData(rawBuf);
+  return _audioBuffer;
+}
+
+/**
+ * MUST be called inside a click handler.
+ * Creates the AudioContext, resumes it, loads the buffer, and plays once.
+ * Sets _unlocked = true so subsequent calls to _playNotify() work.
+ */
+async function _unlockAndPlay() {
+  try {
+    if (!_audioCtx) {
+      _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (_audioCtx.state === "suspended") {
+      await _audioCtx.resume();
+    }
+    const buf = await _loadBuffer(_audioCtx);
+    const src = _audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(_audioCtx.destination);
+    src.start(0);
+    _unlocked = true;
+  } catch (err) {
+    console.warn("Audio unlock failed:", err);
+  }
+}
+
+/**
+ * Call for every notification after _unlocked is true.
+ * No user gesture required because the AudioContext is already running.
+ */
+async function _playNotify() {
+  if (!_unlocked || !_audioCtx) return;
+  try {
+    if (_audioCtx.state === "suspended") await _audioCtx.resume();
+    const buf = await _loadBuffer(_audioCtx);
+    const src = _audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(_audioCtx.destination);
+    src.start(0);
+  } catch (err) {
+    console.warn("Notification sound failed:", err);
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 .rp-page { padding: 28px 32px; font-family: Arial, sans-serif; background: #f4f6f0; min-height: 100%; }
@@ -73,7 +136,7 @@ const CSS = `
 .order-total-lbl { color:#555; font-size:.86rem; }
 .order-total-amt { color:#07713c; font-size:1.05rem; }
 .order-time { font-size:.73rem; color:#aaa; margin-top:5px; }
-.order-actions { padding:11px 18px; border-top:1px solid #f0f7f0; display:flex; gap:9px; }
+.order-actions { padding:11px 18px; border-top:1px solid #f0f7f0; display:flex; gap:9px; justify-content:space-between; align-items:center; }
 .order-action-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 18px; border-radius:9px; border:none; cursor:pointer; font-size:.82rem; font-weight:700; font-family:Arial,sans-serif; transition:all .15s; }
 .oab-prepare { background:#dbeafe; color:#1565c0; }
 .oab-prepare:hover { background:#bfdbfe; }
@@ -109,6 +172,151 @@ const CSS = `
 .img-upload:hover { border-color: #07713c; background: #ecfdf5; }
 .img-upload-label { font-size: .8rem; color: #7a9a7a; font-weight: 600; pointer-events: none; }
 .del-modal { max-width: 400px; }
+
+/* ── Audio Permission Modal ── */
+@keyframes fadeIn    { from { opacity: 0; }                           to { opacity: 1; } }
+@keyframes scaleUp   { from { transform: scale(.88); opacity: 0; }   to { transform: scale(1); opacity: 1; } }
+@keyframes ringPulse { 0%,100% { transform: scale(1);    opacity: .7; }
+                       50%     { transform: scale(1.18);  opacity: .2; } }
+@keyframes bellShake {
+  0%,100% { transform: rotate(0deg); }
+  15%     { transform: rotate(15deg); }
+  30%     { transform: rotate(-14deg); }
+  45%     { transform: rotate(12deg); }
+  60%     { transform: rotate(-10deg); }
+  75%     { transform: rotate(6deg); }
+  90%     { transform: rotate(-3deg); }
+}
+@keyframes fadeUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.audio-overlay {
+  position: fixed; inset: 0; z-index: 3000;
+  background: rgba(0,0,0,.60);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: fadeIn .25s ease;
+}
+.audio-modal {
+  background: #fff;
+  border-radius: 24px;
+  width: min(440px, 95vw);
+  box-shadow: 0 32px 100px rgba(0,0,0,.35);
+  overflow: hidden;
+  animation: scaleUp .3s cubic-bezier(.34,1.56,.64,1);
+  font-family: Arial, sans-serif;
+}
+.audio-modal-top {
+  background: linear-gradient(135deg, #064e32, #07713c, #059c4e);
+  padding: 36px 32px 28px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.audio-modal-top::before {
+  content: '';
+  position: absolute;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  border: 30px solid rgba(255,255,255,.06);
+  top: -60px; right: -60px;
+  pointer-events: none;
+}
+.audio-modal-top::after {
+  content: '';
+  position: absolute;
+  width: 150px; height: 150px;
+  border-radius: 50%;
+  border: 20px solid rgba(255,255,255,.05);
+  bottom: -40px; left: -40px;
+  pointer-events: none;
+}
+.audio-bell-wrap {
+  position: relative;
+  width: 88px; height: 88px;
+  margin: 0 auto 18px;
+  display: flex; align-items: center; justify-content: center;
+}
+.audio-ring {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.35);
+  animation: ringPulse 2s ease-in-out infinite;
+}
+.audio-ring:nth-child(2) {
+  inset: -10px;
+  border-color: rgba(255,255,255,.2);
+  animation-delay: .4s;
+}
+.audio-ring:nth-child(3) {
+  inset: -20px;
+  border-color: rgba(255,255,255,.12);
+  animation-delay: .8s;
+}
+.audio-bell-icon {
+  position: relative; z-index: 1;
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.18);
+  border: 2px solid rgba(255,255,255,.3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2rem;
+  animation: bellShake 2.4s ease-in-out infinite;
+}
+.audio-modal-title {
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.audio-modal-sub {
+  color: rgba(255,255,255,.75);
+  font-size: .84rem;
+  line-height: 1.6;
+}
+.audio-modal-body {
+  padding: 26px 28px 24px;
+}
+.audio-info-row {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: #f0faf4; border: 1px solid #c3e6d0;
+  border-radius: 12px; padding: 14px 16px;
+  margin-bottom: 20px;
+  font-size: .83rem; color: #1b5e20; line-height: 1.6;
+}
+.audio-info-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+.audio-btn-allow {
+  width: 100%;
+  padding: 15px;
+  background: linear-gradient(135deg, #07713c, #0a9150);
+  color: #fff;
+  border: none; border-radius: 12px;
+  cursor: pointer;
+  font-size: .96rem; font-weight: 700;
+  font-family: Arial, sans-serif;
+  box-shadow: 0 6px 20px rgba(7,113,60,.38);
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  transition: transform .15s, box-shadow .15s;
+  margin-bottom: 10px;
+}
+.audio-btn-allow:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(7,113,60,.45);
+}
+.audio-btn-allow:active { transform: translateY(0); }
+.audio-btn-allow:disabled { background: #6dbb8e; cursor: not-allowed; transform: none; }
+.audio-btn-skip {
+  width: 100%;
+  padding: 11px;
+  background: transparent;
+  color: #8a9a8a;
+  border: 1.5px solid #ddd; border-radius: 12px;
+  cursor: pointer;
+  font-size: .84rem; font-weight: 600;
+  font-family: Arial, sans-serif;
+  transition: background .15s, color .15s;
+}
+.audio-btn-skip:hover { background: #f4f6f0; color: #555; }
 `;
 
 const ITEM_STATUS_CFG = {
@@ -139,8 +347,8 @@ export default function Restaurant({ user }) {
   const [filterStatus, setFilterStatus] = useState("all");
   const [orderFilter,  setOrderFilter]  = useState("active");
 
-  const [delOrder,    setDelOrder]    = useState(null);   
-  const [deletingOrd, setDeletingOrd] = useState(false);  
+  const [delOrder,    setDelOrder]    = useState(null);
+  const [deletingOrd, setDeletingOrd] = useState(false);
 
   const [showModal,  setShowModal]  = useState(false);
   const [editItem,   setEditItem]   = useState(null);
@@ -152,82 +360,100 @@ export default function Restaurant({ user }) {
   const [imgPreview, setImgPreview] = useState("");
   const [delItem,    setDelItem]    = useState(null);
   const [deleting,   setDeleting]   = useState(false);
-  const fileRef = useRef();
-  const audioRef = useRef(new Audio(notifySound));
 
+  // ── Audio permission modal ───────────────────────────────────────────────────
+  // Show the modal UNLESS the user already granted permission in a past session.
+  const [showAudioModal, setShowAudioModal] = useState(
+    localStorage.getItem(AUDIO_KEY) !== "1"
+  );
+  // "idle" → "playing" → "done"
+  const [allowBtnState, setAllowBtnState] = useState("idle");
+
+  const fileRef   = useRef();
   const canManage = user?.role === "admin" || user?.role === "restaurant";
 
+  // ── Allow Sound click — MUST be a direct user gesture handler ───────────────
+  const handleAllowSound = async () => {
+    setAllowBtnState("playing");
+    await _unlockAndPlay();               // creates AudioContext + plays sound NOW
+    localStorage.setItem(AUDIO_KEY, "1"); // never ask again on this device
+    setAllowBtnState("done");
+    // Short delay so the staff hears the tone before the modal disappears
+    setTimeout(() => setShowAudioModal(false), 1000);
+  };
+
+  const handleSkipSound = () => {
+    // Opted out — do NOT save flag so they get asked again next session
+    setShowAudioModal(false);
+  };
+
+  // ── Fetch items ──────────────────────────────────────────────────────────────
   useEffect(() => { fetchItems(); }, []);
 
+  // ── Fetch orders + realtime ──────────────────────────────────────────────────
   useEffect(() => {
     fetchOrders();
- 
-    const playNotification = () => {
-      try {
-        const audio = audioRef.current;
-        audio.currentTime = 0;
-        audio.play().catch(() => {}); 
-      } catch {}
+
+    const handleNewOrder = (orderId) => {
+      _playNotify(); // works once AudioContext is unlocked
+
+      setNewOrderIds(prev => new Set([...prev, orderId]));
+      setTab("orders");
+      setTimeout(() => {
+        setNewOrderIds(prev => {
+          const next = new Set(prev);
+          next.delete(orderId);
+          return next;
+        });
+      }, 10000);
     };
- 
+
     const channel = supabase
       .channel("restaurant_orders_rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "restaurant_orders" }, payload => {
-        if (payload.eventType === "INSERT") {
-          if (payload.new.status === "pending") {
-            
-            playNotification();
-            setNewOrderIds(prev => new Set([...prev, payload.new.id]));
-            setTab("orders");
-            setTimeout(() => {
-              setNewOrderIds(prev => { const n = new Set(prev); n.delete(payload.new.id); return n; });
-            }, 10000);
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "restaurant_orders" },
+        payload => {
+          if (payload.eventType === "INSERT") {
+            setOrders(prev => [payload.new, ...prev]);
+            if (payload.new.status === "pending") handleNewOrder(payload.new.id);
+          } else if (payload.eventType === "UPDATE") {
+            setOrders(prev => prev.map(o => o.id === payload.new.id ? payload.new : o));
+            if (payload.new.status === "pending" && payload.old?.status === "queued") {
+              handleNewOrder(payload.new.id);
+            }
+          } else if (payload.eventType === "DELETE") {
+            setOrders(prev => prev.filter(o => o.id !== payload.old.id));
           }
-          setOrders(prev => [payload.new, ...prev]);
-        } else if (payload.eventType === "UPDATE") {
-          const updatedOrder = payload.new;
-          setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
-          if (updatedOrder.status === "pending") {
-           
-            playNotification();
-            setNewOrderIds(prev => new Set([...prev, updatedOrder.id]));
-            setTab("orders");
-            setTimeout(() => {
-              setNewOrderIds(prev => { const n = new Set(prev); n.delete(updatedOrder.id); return n; });
-            }, 10000);
-          }
-        } else if (payload.eventType === "DELETE") {
-          setOrders(prev => prev.filter(o => o.id !== payload.old.id));
         }
-      })
+      )
       .subscribe();
- 
+
     return () => supabase.removeChannel(channel);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Data helpers ─────────────────────────────────────────────────────────────
   const fetchItems = async () => {
     setLoading(true);
-    const { data } = await supabase.from("restaurant_items").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase
+      .from("restaurant_items").select("*").order("created_at", { ascending: false });
     setItems(data || []);
     setLoading(false);
   };
 
   const fetchOrders = async () => {
-    const { data } = await supabase.from("restaurant_orders").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase
+      .from("restaurant_orders").select("*").order("created_at", { ascending: false });
     setOrders(data || []);
   };
 
   const updateOrderStatus = async (id, newStatus) => {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
-    await supabase
-      .from("restaurant_orders")
+    await supabase.from("restaurant_orders")
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq("id", id);
   };
 
-  const deleteOrder = (order) => {
-    setDelOrder(order);
-  };
- 
   const confirmDeleteOrder = async () => {
     if (!delOrder) return;
     setDeletingOrd(true);
@@ -236,7 +462,7 @@ export default function Restaurant({ user }) {
     setDeletingOrd(false);
     setDelOrder(null);
   };
- 
+
   const openAdd = () => {
     setEditItem(null); setForm(EMPTY_FORM); setImgFile(null); setImgPreview("");
     setError(""); setSuccess(""); setShowModal(true);
@@ -244,7 +470,11 @@ export default function Restaurant({ user }) {
 
   const openEdit = item => {
     setEditItem(item);
-    setForm({ name: item.name, price: String(item.price), category: item.category || "food", status: item.status || "available", image_url: item.image_url || "" });
+    setForm({
+      name: item.name, price: String(item.price),
+      category: item.category || "food", status: item.status || "available",
+      image_url: item.image_url || "",
+    });
     setImgFile(null); setImgPreview(item.image_url || "");
     setError(""); setSuccess(""); setShowModal(true);
   };
@@ -257,7 +487,8 @@ export default function Restaurant({ user }) {
   const uploadImage = async file => {
     const ext  = file.name.split(".").pop();
     const path = `restaurant/${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from("restaurant-images").upload(path, file, { upsert: true });
+    const { error: upErr } = await supabase.storage
+      .from("restaurant-images").upload(path, file, { upsert: true });
     if (upErr) throw upErr;
     const { data } = supabase.storage.from("restaurant-images").getPublicUrl(path);
     return data.publicUrl;
@@ -266,28 +497,30 @@ export default function Restaurant({ user }) {
   const handleSave = async () => {
     setError(""); setSuccess("");
     if (!form.name.trim()) { setError("Item name is required."); return; }
-    if (!form.price || isNaN(Number(form.price)) || Number(form.price) < 0) { setError("Enter a valid price."); return; }
+    if (!form.price || isNaN(Number(form.price)) || Number(form.price) < 0) {
+      setError("Enter a valid price."); return;
+    }
     setSaving(true);
     try {
       let imageUrl = form.image_url;
       if (imgFile) imageUrl = await uploadImage(imgFile);
-      const payload = { name: form.name.trim(), price: parseFloat(form.price), category: form.category, status: form.status, image_url: imageUrl || null };
+      const payload = {
+        name: form.name.trim(), price: parseFloat(form.price),
+        category: form.category, status: form.status,
+        image_url: imageUrl || null,
+      };
       if (editItem) {
         const { error: e } = await supabase.from("restaurant_items").update(payload).eq("id", editItem.id);
-        if (e) throw e;
-        setSuccess("Item updated!");
+        if (e) throw e; setSuccess("Item updated!");
       } else {
         const { error: e } = await supabase.from("restaurant_items").insert([payload]);
-        if (e) throw e;
-        setSuccess("Item added!");
+        if (e) throw e; setSuccess("Item added!");
       }
       fetchItems();
       setTimeout(() => { setShowModal(false); setSuccess(""); }, 1200);
     } catch (err) {
       setError(err.message || "Something went wrong.");
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   const handleDelete = async () => {
@@ -305,6 +538,7 @@ export default function Restaurant({ user }) {
     fetchItems();
   };
 
+  // ── Derived state ─────────────────────────────────────────────────────────────
   const filteredItems = items.filter(it =>
     it.name.toLowerCase().includes(search.toLowerCase()) &&
     (filterCat    === "all" || it.category === filterCat) &&
@@ -313,11 +547,9 @@ export default function Restaurant({ user }) {
 
   const activeOrders = orders.filter(o => ["pending", "preparing", "serving"].includes(o.status));
   const queuedOrders = orders.filter(o => o.status === "queued");
-
   const displayOrders =
     orderFilter === "active" ? activeOrders :
-    orderFilter === "queued" ? queuedOrders :
-    orders;
+    orderFilter === "queued" ? queuedOrders : orders;
 
   const pendingCount = orders.filter(o => o.status === "pending").length;
   const activeCount  = activeOrders.length;
@@ -331,22 +563,84 @@ export default function Restaurant({ user }) {
   };
 
   const STAT_CARDS = [
-    { lbl: "Total Items", val: counts.total,       bg: "#e3f2fd", color: "#1565c0", Icon: RiRestaurantLine    },
+    { lbl: "Total Items", val: counts.total,       bg: "#e3f2fd", color: "#1565c0", Icon: RiRestaurantLine     },
     { lbl: "Available",   val: counts.available,   bg: "#e8f5e9", color: "#1b5e20", Icon: RiCheckboxCircleLine },
-    { lbl: "Unavailable", val: counts.unavailable, bg: "#fce4ec", color: "#c62828", Icon: RiCloseCircleLine   },
-    { lbl: "Ongoing",     val: counts.ongoing,     bg: "#fff3e0", color: "#e65100", Icon: RiTimeLine          },
+    { lbl: "Unavailable", val: counts.unavailable, bg: "#fce4ec", color: "#c62828", Icon: RiCloseCircleLine    },
+    { lbl: "Ongoing",     val: counts.ongoing,     bg: "#fff3e0", color: "#e65100", Icon: RiTimeLine           },
   ];
 
   const timeAgo = ts => {
     const diff = Math.floor((Date.now() - new Date(ts)) / 60000);
-    if (diff < 1)  return "Just now";
+    if (diff < 1) return "Just now";
     if (diff < 60) return `${diff}m ago`;
     return `${Math.floor(diff / 60)}h ${diff % 60}m ago`;
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <>
       <style>{CSS}</style>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          AUDIO PERMISSION MODAL
+          Shown as a centered overlay that BLOCKS the UI until the staff
+          makes a choice. The "Allow Sound" button IS the user gesture that
+          unlocks the AudioContext — the sound plays on that exact click.
+      ══════════════════════════════════════════════════════════════════════ */}
+      {showAudioModal && (
+        <div className="audio-overlay">
+          <div className="audio-modal">
+
+            {/* Green gradient header with animated bell */}
+            <div className="audio-modal-top">
+              <div className="audio-bell-wrap">
+                <div className="audio-ring" />
+                <div className="audio-ring" />
+                <div className="audio-ring" />
+                <div className="audio-bell-icon">🔔</div>
+              </div>
+              <div className="audio-modal-title">Enable Sound Notifications</div>
+              <div className="audio-modal-sub">
+                Get notified instantly when a new order arrives
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="audio-modal-body">
+              <div className="audio-info-row">
+                <span className="audio-info-icon">ℹ️</span>
+                <span>
+                  Click <strong>Allow Sound</strong> — you'll hear the notification tone play
+                  <strong> immediately</strong>. Every new order will then trigger the sound
+                  automatically. You will <strong>not be asked again</strong> on this device.
+                </span>
+              </div>
+
+              {/* PRIMARY: Allow Sound — this is the user gesture that creates AudioContext */}
+              <button
+                className="audio-btn-allow"
+                onClick={handleAllowSound}
+                disabled={allowBtnState !== "idle"}
+              >
+                {allowBtnState === "idle"    && <><span>🔊</span> Allow Sound &amp; Enable Notifications</>}
+                {allowBtnState === "playing" && <><span>▶</span>  Playing sound…</>}
+                {allowBtnState === "done"    && <><span>✅</span> Sound Enabled!</>}
+              </button>
+
+              {/* SECONDARY: Skip */}
+              <button
+                className="audio-btn-skip"
+                onClick={handleSkipSound}
+                disabled={allowBtnState === "playing"}
+              >
+                Skip for now — use silent mode
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ MAIN PAGE ══════════════════════════════════════════════════ */}
       <div className="rp-page">
 
         <div className="rp-hdr">
@@ -355,23 +649,37 @@ export default function Restaurant({ user }) {
             <p className="rp-sub">Manage menu items and guest orders</p>
           </div>
           {canManage && tab === "menu" && (
-            <button className="btn-primary" onClick={openAdd}><RiAddLine size={16} /> Add Item</button>
+            <button className="btn-primary" onClick={openAdd}>
+              <RiAddLine size={16} /> Add Item
+            </button>
           )}
           {tab === "orders" && (
-            <button className="btn-primary" style={{ background: "#1565c0", boxShadow: "0 4px 14px rgba(21,101,192,.28)" }} onClick={fetchOrders}>
+            <button
+              className="btn-primary"
+              style={{ background: "#1565c0", boxShadow: "0 4px 14px rgba(21,101,192,.28)" }}
+              onClick={fetchOrders}
+            >
               <RiRefreshLine size={16} /> Refresh
             </button>
           )}
         </div>
 
         <div className="tab-bar">
-          <button className={`tab-btn${tab === "menu" ? " active" : ""}`} onClick={() => setTab("menu")}>
+          <button
+            className={`tab-btn${tab === "menu" ? " active" : ""}`}
+            onClick={() => setTab("menu")}
+          >
             <RiRestaurantLine size={16} /> Menu Items
           </button>
-          <button className={`tab-btn${tab === "orders" ? " active" : ""}`} onClick={() => setTab("orders")}>
+          <button
+            className={`tab-btn${tab === "orders" ? " active" : ""}`}
+            onClick={() => setTab("orders")}
+          >
             <RiOrderPlayLine size={16} /> Orders
             {activeCount > 0 && (
-              <span className={`tab-notif${pendingCount > 0 ? " new-pulse" : ""}`}>{activeCount}</span>
+              <span className={`tab-notif${pendingCount > 0 ? " new-pulse" : ""}`}>
+                {activeCount}
+              </span>
             )}
             {queuedCount > 0 && activeCount === 0 && (
               <span className="tab-notif-amber">{queuedCount}</span>
@@ -379,22 +687,34 @@ export default function Restaurant({ user }) {
           </button>
         </div>
 
+        {/* ══════════ MENU TAB ══════════ */}
         {tab === "menu" && (
           <>
             <div className="sc-4">
               {STAT_CARDS.map(({ lbl, val, bg, color, Icon }) => (
                 <div key={lbl} className="sc" style={{ background: bg }}>
-                  <div className="sc-row"><span className="sc-ico"><Icon size={20} color={color} /></span><span className="sc-lbl" style={{ color }}>{lbl}</span></div>
+                  <div className="sc-row">
+                    <span className="sc-ico"><Icon size={20} color={color} /></span>
+                    <span className="sc-lbl" style={{ color }}>{lbl}</span>
+                  </div>
                   <div className="sc-val">{val}</div>
                 </div>
               ))}
             </div>
+
             <div className="fbar">
               <RiSearchLine size={18} color="#7a9a7a" />
-              <input className="finput" placeholder="Search items..." value={search} onChange={e => setSearch(e.target.value)} />
+              <input
+                className="finput"
+                placeholder="Search items..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
               <select className="fsel" value={filterCat} onChange={e => setFilterCat(e.target.value)}>
                 <option value="all">All Categories</option>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                {CATEGORIES.map(c => (
+                  <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                ))}
               </select>
               <select className="fsel" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                 <option value="all">All Status</option>
@@ -403,51 +723,65 @@ export default function Restaurant({ user }) {
                 <option value="ongoing">Ongoing</option>
               </select>
             </div>
-            {loading
-              ? <div className="empty">Loading menu items…</div>
-              : filteredItems.length === 0
-                ? <div className="empty">No items found. {canManage && "Click \"Add Item\" to get started."}</div>
-                : (
-                  <div className="card-grid">
-                    {filteredItems.map(item => {
-                      const sCfg = ITEM_STATUS_CFG[item.status] || ITEM_STATUS_CFG.available;
-                      return (
-                        <div key={item.id} className="item-card">
-                          <div className="item-img">
-                            {item.image_url
-                              ? <img src={item.image_url} alt={item.name} />
-                              : <div className="item-img-placeholder"><RiImageAddLine size={36} color="#c8d8c8" /><span>No image</span></div>
-                            }
-                          </div>
-                          <div className="item-body">
-                            <div className="item-name">{item.name}</div>
-                            <div className="item-meta">
-                              <span className="item-price">₱{parseFloat(item.price).toLocaleString()}</span>
-                              <span className="item-cat">{item.category}</span>
+
+            {loading ? (
+              <div className="empty">Loading menu items…</div>
+            ) : filteredItems.length === 0 ? (
+              <div className="empty">
+                No items found.{canManage && ' Click "Add Item" to get started.'}
+              </div>
+            ) : (
+              <div className="card-grid">
+                {filteredItems.map(item => {
+                  const sCfg = ITEM_STATUS_CFG[item.status] || ITEM_STATUS_CFG.available;
+                  return (
+                    <div key={item.id} className="item-card">
+                      <div className="item-img">
+                        {item.image_url
+                          ? <img src={item.image_url} alt={item.name} />
+                          : <div className="item-img-placeholder">
+                              <RiImageAddLine size={36} color="#c8d8c8" /><span>No image</span>
                             </div>
-                            <div>
-                              <span className="status-pill"
-                                style={{ background: sCfg.bg, color: sCfg.color, cursor: canManage ? "pointer" : "default" }}
-                                onClick={() => canManage && cycleStatus(item)}>
-                                <sCfg.Icon size={12} />{sCfg.label}
-                              </span>
-                            </div>
-                            {canManage && (
-                              <div className="item-actions">
-                                <button className="btn-act btn-edit" onClick={() => openEdit(item)}><RiPencilLine size={13} /> Edit</button>
-                                <button className="btn-act btn-del"  onClick={() => setDelItem(item)}><RiDeleteBinLine size={13} /> Delete</button>
-                              </div>
-                            )}
-                          </div>
+                        }
+                      </div>
+                      <div className="item-body">
+                        <div className="item-name">{item.name}</div>
+                        <div className="item-meta">
+                          <span className="item-price">₱{parseFloat(item.price).toLocaleString()}</span>
+                          <span className="item-cat">{item.category}</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )
-            }
+                        <div>
+                          <span
+                            className="status-pill"
+                            style={{
+                              background: sCfg.bg, color: sCfg.color,
+                              cursor: canManage ? "pointer" : "default",
+                            }}
+                            onClick={() => canManage && cycleStatus(item)}
+                          >
+                            <sCfg.Icon size={12} />{sCfg.label}
+                          </span>
+                        </div>
+                        {canManage && (
+                          <div className="item-actions">
+                            <button className="btn-act btn-edit" onClick={() => openEdit(item)}>
+                              <RiPencilLine size={13} /> Edit
+                            </button>
+                            <button className="btn-act btn-del" onClick={() => setDelItem(item)}>
+                              <RiDeleteBinLine size={13} /> Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
 
+        {/* ══════════ ORDERS TAB ══════════ */}
         {tab === "orders" && (
           <>
             <div style={{ display: "flex", gap: "8px", marginBottom: "18px", alignItems: "center", flexWrap: "wrap" }}>
@@ -467,10 +801,15 @@ export default function Restaurant({ user }) {
                     color: orderFilter === f.val ? f.accent : "#6b7a6b",
                     fontWeight: "700", fontSize: ".84rem", cursor: "pointer",
                     fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", gap: "7px",
-                  }}>
+                  }}
+                >
                   {f.label}
                   {f.count > 0 && (
-                    <span style={{ background: f.accent, color: "#fff", borderRadius: "50%", width: "18px", height: "18px", fontSize: ".62rem", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <span style={{
+                      background: f.accent, color: "#fff", borderRadius: "50%",
+                      width: "18px", height: "18px", fontSize: ".62rem", fontWeight: "700",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
                       {f.count}
                     </span>
                   )}
@@ -479,7 +818,12 @@ export default function Restaurant({ user }) {
             </div>
 
             {orderFilter === "queued" && queuedCount > 0 && (
-              <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "14px 18px", marginBottom: "16px", display: "flex", alignItems: "flex-start", gap: "10px", fontSize: ".84rem", color: "#b45309" }}>
+              <div style={{
+                background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px",
+                padding: "14px 18px", marginBottom: "16px",
+                display: "flex", alignItems: "flex-start", gap: "10px",
+                fontSize: ".84rem", color: "#b45309",
+              }}>
                 <RiHistoryLine size={18} style={{ flexShrink: 0, marginTop: "1px" }} />
                 <div>
                   <strong>Queued pre-orders</strong> are placed during reservation before check-in.
@@ -488,114 +832,122 @@ export default function Restaurant({ user }) {
               </div>
             )}
 
-            {displayOrders.length === 0
-              ? (
-                <div className="empty">
-                  {orderFilter === "active" ? "No active orders right now 🎉"
-                    : orderFilter === "queued" ? "No queued pre-orders."
-                    : "No orders yet."}
-                </div>
-              )
-              : (
-                <div className="orders-grid">
-                  {displayOrders.map(order => {
-                    const sCfg  = ORDER_STATUS_CFG[order.status] || ORDER_STATUS_CFG.pending;
-                    const isNew = newOrderIds.has(order.id);
-                    const itms  = Array.isArray(order.items) ? order.items : [];
- 
-                    return (
-                      <div key={order.id} className={`order-card ${order.status}${isNew ? " new-pulse" : ""}`}>
-                        <div className="order-hdr">
-                          <div>
-                            <div className="order-guest">
-                              {isNew && (
-                                <span style={{ background: "#e53935", color: "#fff", fontSize: ".6rem", fontWeight: "700", padding: "2px 8px", borderRadius: "20px", marginRight: "8px" }}>NEW!</span>
-                              )}
-                              {order.status === "queued" && (
-                                <span style={{ background: "#f59e0b", color: "#fff", fontSize: ".6rem", fontWeight: "700", padding: "2px 8px", borderRadius: "20px", marginRight: "8px" }}>PRE-ORDER</span>
-                              )}
-                              {order.guest_name}
-                            </div>
-                            <div className="order-room">
-                              Room {order.room_number || "—"} · {order.status === "queued" ? "Waiting for check-in" : timeAgo(order.created_at)}
-                            </div>
+            {displayOrders.length === 0 ? (
+              <div className="empty">
+                {orderFilter === "active" ? "No active orders right now 🎉"
+                  : orderFilter === "queued" ? "No queued pre-orders."
+                  : "No orders yet."}
+              </div>
+            ) : (
+              <div className="orders-grid">
+                {displayOrders.map(order => {
+                  const sCfg  = ORDER_STATUS_CFG[order.status] || ORDER_STATUS_CFG.pending;
+                  const isNew = newOrderIds.has(order.id);
+                  const itms  = Array.isArray(order.items) ? order.items : [];
+
+                  return (
+                    <div key={order.id} className={`order-card ${order.status}${isNew ? " new-pulse" : ""}`}>
+                      <div className="order-hdr">
+                        <div>
+                          <div className="order-guest">
+                            {isNew && (
+                              <span style={{
+                                background: "#e53935", color: "#fff",
+                                fontSize: ".6rem", fontWeight: "700",
+                                padding: "2px 8px", borderRadius: "20px", marginRight: "8px",
+                              }}>NEW!</span>
+                            )}
+                            {order.status === "queued" && (
+                              <span style={{
+                                background: "#f59e0b", color: "#fff",
+                                fontSize: ".6rem", fontWeight: "700",
+                                padding: "2px 8px", borderRadius: "20px", marginRight: "8px",
+                              }}>PRE-ORDER</span>
+                            )}
+                            {order.guest_name}
                           </div>
-                          <span className="order-status-pill" style={{ background: sCfg.bg, color: sCfg.color }}>
-                            <sCfg.Icon size={13} /> {sCfg.label}
+                          <div className="order-room">
+                            Room {order.room_number || "—"} ·{" "}
+                            {order.status === "queued" ? "Waiting for check-in" : timeAgo(order.created_at)}
+                          </div>
+                        </div>
+                        <span className="order-status-pill" style={{ background: sCfg.bg, color: sCfg.color }}>
+                          <sCfg.Icon size={13} /> {sCfg.label}
+                        </span>
+                      </div>
+
+                      <div className="order-body">
+                        <div className="order-items-list">
+                          {itms.map((it, idx) => (
+                            <div key={idx} className="order-item-row">
+                              <div>
+                                <span className="order-item-name">{it.name}</span>
+                                <span className="order-item-sub"> ×{it.qty}</span>
+                              </div>
+                              <span style={{ fontWeight: "600", color: "#07713c" }}>
+                                ₱{parseFloat(it.subtotal).toLocaleString()}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="order-total">
+                          <span className="order-total-lbl">Total</span>
+                          <span className="order-total-amt">
+                            ₱{parseFloat(order.total_amount).toLocaleString()}
                           </span>
                         </div>
- 
-                        <div className="order-body">
-                          <div className="order-items-list">
-                            {itms.map((it, idx) => (
-                              <div key={idx} className="order-item-row">
-                                <div>
-                                  <span className="order-item-name">{it.name}</span>
-                                  <span className="order-item-sub"> ×{it.qty}</span>
-                                </div>
-                                <span style={{ fontWeight: "600", color: "#07713c" }}>₱{parseFloat(it.subtotal).toLocaleString()}</span>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="order-total">
-                            <span className="order-total-lbl">Total</span>
-                            <span className="order-total-amt">₱{parseFloat(order.total_amount).toLocaleString()}</span>
-                          </div>
-                          {order.status !== "queued" && (
-                            <div className="order-time">{timeAgo(order.created_at)}</div>
+                        {order.status !== "queued" && (
+                          <div className="order-time">{timeAgo(order.created_at)}</div>
+                        )}
+                      </div>
+
+                      <div className="order-actions">
+                        <button
+                          onClick={() => setDelOrder(order)}
+                          style={{
+                            display: "inline-flex", alignItems: "center", gap: "5px",
+                            padding: "9px 14px", borderRadius: "9px", border: "none",
+                            background: "#fff1f1", color: "#dc2626",
+                            fontWeight: "700", fontSize: ".78rem",
+                            fontFamily: "Arial,sans-serif", cursor: "pointer", transition: "background .15s",
+                          }}
+                          onMouseOver={e => e.currentTarget.style.background = "#fee2e2"}
+                          onMouseOut={e  => e.currentTarget.style.background = "#fff1f1"}
+                        >
+                          <RiDeleteBinLine size={14} /> Delete
+                        </button>
+
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          {order.status === "pending" && (
+                            <button className="order-action-btn oab-prepare"
+                              onClick={() => updateOrderStatus(order.id, "preparing")}>
+                              <RiTimeLine size={14} /> Start Preparing
+                            </button>
+                          )}
+                          {order.status === "preparing" && (
+                            <button className="order-action-btn oab-serve"
+                              onClick={() => updateOrderStatus(order.id, "serving")}>
+                              <RiBikeLine size={14} /> Mark as Serving
+                            </button>
+                          )}
+                          {order.status === "serving" && (
+                            <button className="order-action-btn oab-done"
+                              onClick={() => updateOrderStatus(order.id, "done")}>
+                              <RiCheckDoubleLine size={14} /> Mark as Done
+                            </button>
                           )}
                         </div>
- 
-                        {/* ── Actions row — shown for ALL statuses ── */}
-                        <div className="order-actions" style={{ justifyContent: "space-between" }}>
- 
-                          {/* Delete — always bottom left */}
-                          <button
-                            onClick={() => deleteOrder(order)}
-                            style={{
-                              display: "inline-flex", alignItems: "center", gap: "5px",
-                              padding: "9px 14px", borderRadius: "9px", border: "none",
-                              background: "#fff1f1", color: "#dc2626",
-                              fontWeight: "700", fontSize: ".78rem",
-                              fontFamily: "Arial,sans-serif", cursor: "pointer",
-                              transition: "background .15s",
-                            }}
-                            onMouseOver={e => e.currentTarget.style.background = "#fee2e2"}
-                            onMouseOut={e =>  e.currentTarget.style.background = "#fff1f1"}
-                          >
-                            <RiDeleteBinLine size={14} /> Delete
-                          </button>
- 
-                          {/* Status progression buttons — right side */}
-                          <div style={{ display: "flex", gap: "8px" }}>
-                            {order.status === "pending" && (
-                              <button className="order-action-btn oab-prepare" onClick={() => updateOrderStatus(order.id, "preparing")}>
-                                <RiTimeLine size={14} /> Start Preparing
-                              </button>
-                            )}
-                            {order.status === "preparing" && (
-                              <button className="order-action-btn oab-serve" onClick={() => updateOrderStatus(order.id, "serving")}>
-                                <RiBikeLine size={14} /> Mark as Serving
-                              </button>
-                            )}
-                            {order.status === "serving" && (
-                              <button className="order-action-btn oab-done" onClick={() => updateOrderStatus(order.id, "done")}>
-                                <RiCheckDoubleLine size={14} /> Mark as Done
-                              </button>
-                            )}
-                          </div>
-                        </div>
                       </div>
-                    );
-                  })}
- 
-                </div>
-              )
-            }
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </div>
 
+      {/* ══ ADD / EDIT ITEM MODAL ═══════════════════════════════════════════ */}
       {showModal && (
         <div className="mo" onClick={() => setShowModal(false)}>
           <div className="mb" onClick={e => e.stopPropagation()}>
@@ -612,15 +964,25 @@ export default function Restaurant({ user }) {
               <div className="sc2">
                 <div className="sc2-title">Item Image</div>
                 <div className="img-upload" onClick={() => fileRef.current?.click()}>
-                  <input type="file" accept="image/*" ref={fileRef} style={{ display: "none" }} onChange={handleImgChange} />
+                  <input
+                    type="file" accept="image/*" ref={fileRef}
+                    style={{ display: "none" }} onChange={handleImgChange}
+                  />
                   {imgPreview
-                    ? <img src={imgPreview} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "10px" }} />
-                    : <><RiImageAddLine size={28} color="#7a9a7a" /><span className="img-upload-label">Click to upload image</span><span style={{ fontSize: ".72rem", color: "#aaa" }}>PNG, JPG, WEBP</span></>
+                    ? <img src={imgPreview} alt="preview"
+                        style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "10px" }} />
+                    : <>
+                        <RiImageAddLine size={28} color="#7a9a7a" />
+                        <span className="img-upload-label">Click to upload image</span>
+                        <span style={{ fontSize: ".72rem", color: "#aaa" }}>PNG, JPG, WEBP</span>
+                      </>
                   }
                 </div>
                 {imgPreview && (
-                  <button style={{ marginTop: "8px", fontSize: ".78rem", color: "#dc2626", background: "none", border: "none", cursor: "pointer", fontFamily: "Arial,sans-serif" }}
-                    onClick={() => { setImgFile(null); setImgPreview(""); setForm(f => ({ ...f, image_url: "" })); }}>
+                  <button
+                    style={{ marginTop: "8px", fontSize: ".78rem", color: "#dc2626", background: "none", border: "none", cursor: "pointer", fontFamily: "Arial,sans-serif" }}
+                    onClick={() => { setImgFile(null); setImgPreview(""); setForm(f => ({ ...f, image_url: "" })); }}
+                  >
                     ✕ Remove image
                   </button>
                 )}
@@ -630,22 +992,28 @@ export default function Restaurant({ user }) {
                 <div style={{ display: "flex", flexDirection: "column", gap: "13px" }}>
                   <div>
                     <label className="flabel">Item Name</label>
-                    <input className="fi" placeholder="e.g. Chicken Adobo" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+                    <input className="fi" placeholder="e.g. Chicken Adobo"
+                      value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
                   </div>
                   <div>
                     <label className="flabel">Price (₱)</label>
-                    <input className="fi" type="number" min="0" placeholder="0.00" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+                    <input className="fi" type="number" min="0" placeholder="0.00"
+                      value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "13px" }}>
                     <div>
                       <label className="flabel">Category</label>
-                      <select className="fi" style={{ cursor: "pointer" }} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                        {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                      <select className="fi" style={{ cursor: "pointer" }}
+                        value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+                        {CATEGORIES.map(c => (
+                          <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                        ))}
                       </select>
                     </div>
                     <div>
                       <label className="flabel">Status</label>
-                      <select className="fi" style={{ cursor: "pointer" }} value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                      <select className="fi" style={{ cursor: "pointer" }}
+                        value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
                         <option value="available">Available</option>
                         <option value="unavailable">Unavailable</option>
                         <option value="ongoing">Ongoing</option>
@@ -665,6 +1033,7 @@ export default function Restaurant({ user }) {
         </div>
       )}
 
+      {/* ══ DELETE ITEM MODAL ════════════════════════════════════════════════ */}
       {delItem && (
         <div className="mo" onClick={() => setDelItem(null)}>
           <div className="mb del-modal" onClick={e => e.stopPropagation()}>
@@ -692,36 +1061,29 @@ export default function Restaurant({ user }) {
         </div>
       )}
 
-       {delOrder && (
+      {/* ══ DELETE ORDER MODAL ═══════════════════════════════════════════════ */}
+      {delOrder && (
         <div
           style={{
             position: "fixed", inset: 0, zIndex: 1100,
-            background: "rgba(0,0,0,0.55)",
-            backdropFilter: "blur(3px)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "20px",
+            background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
           }}
           onClick={() => !deletingOrd && setDelOrder(null)}
         >
           <div
             style={{
-              background: "#fff", borderRadius: "20px",
-              width: "min(420px, 95vw)",
-              boxShadow: "0 24px 80px rgba(0,0,0,0.25)",
-              fontFamily: "Arial, sans-serif",
-              overflow: "hidden",
-              animation: "fadeUp .18s ease",
+              background: "#fff", borderRadius: "20px", width: "min(420px,95vw)",
+              boxShadow: "0 24px 80px rgba(0,0,0,.25)",
+              fontFamily: "Arial,sans-serif", overflow: "hidden", animation: "fadeUp .18s ease",
             }}
             onClick={e => e.stopPropagation()}
           >
-            {/* Header */}
             <div style={{
-              background: "linear-gradient(135deg, #b71c1c, #e53935)",
-              padding: "22px 26px",
-              display: "flex", alignItems: "center", gap: "14px",
+              background: "linear-gradient(135deg,#b71c1c,#e53935)",
+              padding: "22px 26px", display: "flex", alignItems: "center", gap: "14px",
               position: "relative", overflow: "hidden",
             }}>
-              {/* decorative circle */}
               <div style={{
                 position: "absolute", width: "120px", height: "120px",
                 borderRadius: "50%", border: "20px solid rgba(255,255,255,0.08)",
@@ -730,15 +1092,12 @@ export default function Restaurant({ user }) {
               <div style={{
                 width: "44px", height: "44px", borderRadius: "50%",
                 background: "rgba(255,255,255,0.15)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
               }}>
                 <RiDeleteBinLine size={20} color="#fff" />
               </div>
-              <div>
-                <div style={{ color: "#fff", fontWeight: "700", fontSize: "1rem" }}>
-                  Delete Order
-                </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: "#fff", fontWeight: "700", fontSize: "1rem" }}>Delete Order</div>
                 <div style={{ color: "rgba(255,255,255,0.65)", fontSize: ".78rem", marginTop: "2px" }}>
                   This action cannot be undone
                 </div>
@@ -746,26 +1105,24 @@ export default function Restaurant({ user }) {
               <button
                 onClick={() => !deletingOrd && setDelOrder(null)}
                 style={{
-                  marginLeft: "auto", background: "rgba(255,255,255,0.15)",
-                  border: "none", width: "30px", height: "30px",
-                  borderRadius: "50%", cursor: deletingOrd ? "not-allowed" : "pointer",
-                  color: "#fff", fontSize: "1.1rem",
+                  background: "rgba(255,255,255,0.15)", border: "none",
+                  width: "30px", height: "30px", borderRadius: "50%",
+                  cursor: "pointer", color: "#fff", fontSize: "1.1rem",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  flexShrink: 0, position: "relative", zIndex: 1,
+                  position: "relative", zIndex: 1,
                 }}
-              >
-                ×
-              </button>
+              >×</button>
             </div>
- 
-            {/* Body */}
-            <div style={{ padding: "24px 26px" }}>
-              {/* Order summary */}
+
+            <div style={{ padding: "22px 26px" }}>
               <div style={{
                 background: "#fafafa", border: "1px solid #f0f0f0",
-                borderRadius: "12px", padding: "14px 16px", marginBottom: "18px",
+                borderRadius: "12px", padding: "14px 16px", marginBottom: "16px",
               }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
+                <div style={{
+                  display: "flex", justifyContent: "space-between",
+                  alignItems: "flex-start", marginBottom: "10px",
+                }}>
                   <div>
                     <div style={{ fontWeight: "700", fontSize: ".95rem", color: "#1a1a1a" }}>
                       {delOrder.guest_name}
@@ -783,20 +1140,14 @@ export default function Restaurant({ user }) {
                     {ORDER_STATUS_CFG[delOrder.status]?.label || delOrder.status}
                   </span>
                 </div>
- 
-                {/* Items list */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "10px" }}>
                   {(Array.isArray(delOrder.items) ? delOrder.items : []).map((it, i) => (
-                    <div key={i} style={{
-                      display: "flex", justifyContent: "space-between",
-                      fontSize: ".82rem", color: "#555",
-                    }}>
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: ".82rem", color: "#555" }}>
                       <span>{it.name} <span style={{ color: "#aaa" }}>×{it.qty}</span></span>
                       <span style={{ fontWeight: "600" }}>₱{parseFloat(it.subtotal).toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
- 
                 <div style={{
                   display: "flex", justifyContent: "space-between",
                   borderTop: "1px dashed #e8e8e8", paddingTop: "8px",
@@ -806,153 +1157,47 @@ export default function Restaurant({ user }) {
                   <span style={{ color: "#07713c" }}>₱{parseFloat(delOrder.total_amount).toLocaleString()}</span>
                 </div>
               </div>
- 
-              {/* Warning text */}
+
               <div style={{
-                background: "#fff3f3", border: "1px solid #ffcdd2",
-                borderRadius: "10px", padding: "11px 14px", marginBottom: "20px",
+                background: "#fff3f3", border: "1px solid #ffcdd2", borderRadius: "10px",
+                padding: "11px 14px", marginBottom: "20px",
                 display: "flex", gap: "8px", alignItems: "flex-start",
                 fontSize: ".82rem", color: "#c62828", lineHeight: "1.5",
               }}>
-                <span style={{ flexShrink: 0, fontSize: "1rem" }}>⚠️</span>
+                <span style={{ flexShrink: 0 }}>⚠️</span>
                 <span>
-                  Deleting this order will permanently remove it from the system.
-                  {delOrder.status === "pending" || delOrder.status === "preparing"
-                    ? " The kitchen will no longer see this order."
-                    : ""}
+                  Permanently removes this order from the system.
+                  {(delOrder.status === "pending" || delOrder.status === "preparing") &&
+                    " The kitchen will no longer see this order."}
+                  {delOrder.status === "queued" && " This pre-order will be cancelled."}
                 </span>
               </div>
- 
-              {/* Buttons */}
+
               <div style={{ display: "flex", gap: "10px" }}>
                 <button
-                  onClick={() => setDelOrder(null)}
-                  disabled={deletingOrd}
+                  onClick={() => setDelOrder(null)} disabled={deletingOrd}
                   style={{
                     flex: 1, padding: "12px", background: "#fff",
                     border: "1.5px solid #e0e0e0", borderRadius: "10px",
                     cursor: deletingOrd ? "not-allowed" : "pointer",
                     fontSize: ".88rem", fontWeight: "600", color: "#666",
-                    fontFamily: "Arial, sans-serif",
+                    fontFamily: "Arial,sans-serif",
                   }}
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={confirmDeleteOrder}
-                  disabled={deletingOrd}
+                  onClick={confirmDeleteOrder} disabled={deletingOrd}
                   style={{
                     flex: 2, padding: "12px", border: "none", borderRadius: "10px",
                     background: deletingOrd ? "#aaa" : "#dc2626",
                     cursor: deletingOrd ? "not-allowed" : "pointer",
                     fontSize: ".88rem", fontWeight: "700", color: "#fff",
-                    fontFamily: "Arial, sans-serif",
+                    fontFamily: "Arial,sans-serif",
                     display: "flex", alignItems: "center", justifyContent: "center", gap: "7px",
                     boxShadow: deletingOrd ? "none" : "0 4px 12px rgba(220,38,38,0.30)",
-                    transition: "background .15s",
                   }}
                 >
-                  <RiDeleteBinLine size={15} />
-                  {deletingOrd ? "Deleting…" : "Yes, Delete Order"}
-                </button>
-              </div>
-            </div>
-          </div>
- 
-          <style>{`
-            @keyframes fadeUp {
-              from { transform: translateY(20px); opacity: 0; }
-              to   { transform: translateY(0);    opacity: 1; }
-            }
-          `}</style>
-        </div>
-      )}
-            {delOrder && (
-        <div
-          style={{
-            position: "fixed", inset: 0, zIndex: 1100,
-            background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "20px",
-          }}
-          onClick={() => !deletingOrd && setDelOrder(null)}
-        >
-          <div
-            style={{
-              background: "#fff", borderRadius: "20px",
-              width: "min(420px, 95vw)",
-              boxShadow: "0 24px 80px rgba(0,0,0,0.25)",
-              fontFamily: "Arial,sans-serif", overflow: "hidden",
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div style={{
-              background: "linear-gradient(135deg,#b71c1c,#e53935)",
-              padding: "22px 26px",
-              display: "flex", alignItems: "center", gap: "14px",
-              position: "relative", overflow: "hidden",
-            }}>
-              <div style={{ position: "absolute", width: "120px", height: "120px", borderRadius: "50%", border: "20px solid rgba(255,255,255,0.08)", top: "-40px", right: "-30px", pointerEvents: "none" }} />
-              <div style={{ width: "44px", height: "44px", borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <RiDeleteBinLine size={20} color="#fff" />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ color: "#fff", fontWeight: "700", fontSize: "1rem" }}>Delete Order</div>
-                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: ".78rem", marginTop: "2px" }}>This action cannot be undone</div>
-              </div>
-              <button onClick={() => !deletingOrd && setDelOrder(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", width: "30px", height: "30px", borderRadius: "50%", cursor: "pointer", color: "#fff", fontSize: "1.1rem", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1 }}>×</button>
-            </div>
- 
-            {/* Body */}
-            <div style={{ padding: "22px 26px" }}>
-              {/* Order summary card */}
-              <div style={{ background: "#fafafa", border: "1px solid #f0f0f0", borderRadius: "12px", padding: "14px 16px", marginBottom: "16px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
-                  <div>
-                    <div style={{ fontWeight: "700", fontSize: ".95rem", color: "#1a1a1a" }}>{delOrder.guest_name}</div>
-                    <div style={{ fontSize: ".76rem", color: "#8a9a8a", marginTop: "2px" }}>Room {delOrder.room_number || "—"}</div>
-                  </div>
-                  <span style={{
-                    fontSize: ".68rem", fontWeight: "700", padding: "3px 10px", borderRadius: "20px", textTransform: "capitalize",
-                    background: ORDER_STATUS_CFG[delOrder.status]?.bg || "#f3f4f6",
-                    color: ORDER_STATUS_CFG[delOrder.status]?.color || "#555",
-                  }}>
-                    {ORDER_STATUS_CFG[delOrder.status]?.label || delOrder.status}
-                  </span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "10px" }}>
-                  {(Array.isArray(delOrder.items) ? delOrder.items : []).map((it, i) => (
-                    <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: ".82rem", color: "#555" }}>
-                      <span>{it.name} <span style={{ color: "#aaa" }}>×{it.qty}</span></span>
-                      <span style={{ fontWeight: "600" }}>₱{parseFloat(it.subtotal).toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed #e8e8e8", paddingTop: "8px", fontWeight: "700", fontSize: ".88rem" }}>
-                  <span style={{ color: "#555" }}>Total</span>
-                  <span style={{ color: "#07713c" }}>₱{parseFloat(delOrder.total_amount).toLocaleString()}</span>
-                </div>
-              </div>
- 
-              {/* Warning */}
-              <div style={{ background: "#fff3f3", border: "1px solid #ffcdd2", borderRadius: "10px", padding: "11px 14px", marginBottom: "20px", display: "flex", gap: "8px", alignItems: "flex-start", fontSize: ".82rem", color: "#c62828", lineHeight: "1.5" }}>
-                <span style={{ flexShrink: 0 }}>⚠️</span>
-                <span>
-                  Permanently removes this order from the system.
-                  {(delOrder.status === "pending" || delOrder.status === "preparing") && " The kitchen will no longer see this order."}
-                  {delOrder.status === "queued" && " This pre-order will be cancelled."}
-                </span>
-              </div>
- 
-              {/* Buttons */}
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button onClick={() => setDelOrder(null)} disabled={deletingOrd}
-                  style={{ flex: 1, padding: "12px", background: "#fff", border: "1.5px solid #e0e0e0", borderRadius: "10px", cursor: deletingOrd ? "not-allowed" : "pointer", fontSize: ".88rem", fontWeight: "600", color: "#666", fontFamily: "Arial,sans-serif" }}>
-                  Cancel
-                </button>
-                <button onClick={confirmDeleteOrder} disabled={deletingOrd}
-                  style={{ flex: 2, padding: "12px", border: "none", borderRadius: "10px", background: deletingOrd ? "#aaa" : "#dc2626", cursor: deletingOrd ? "not-allowed" : "pointer", fontSize: ".88rem", fontWeight: "700", color: "#fff", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px", boxShadow: deletingOrd ? "none" : "0 4px 12px rgba(220,38,38,0.30)" }}>
                   <RiDeleteBinLine size={15} />
                   {deletingOrd ? "Deleting…" : "Yes, Delete Order"}
                 </button>

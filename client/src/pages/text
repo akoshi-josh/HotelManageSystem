@@ -1,4 +1,1 @@
-In CheckInModal the one that you give has bug the handle confirm because the guest from the reservation select the room 105 which is avaible but when in come to the CheckInModal when i click the Confirm CheckIn its says The room is reserved which is true but the one who will confirm is the guest who reserve the room its a bug
-
-and in the GuesApp when i click the Submit Information theres an error says "⚠ null value in column "email" of relation "newGuest" violates not-null constraint"
-
+now it works but the problem is that it says colleted from Inhouse even it collected from the CheckIn

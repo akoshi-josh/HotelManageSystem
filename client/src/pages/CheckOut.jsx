@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   RiUserLine, RiHotelBedLine, RiCalendarLine, RiLogoutBoxLine,
-  RiErrorWarningLine, RiTimeLine, RiMoneyDollarCircleLine,
+  RiErrorWarningLine, RiMoneyDollarCircleLine,
   RiStickyNoteLine, RiCheckboxCircleLine, RiSearchLine, RiAlertLine,
   RiToolsLine, RiCheckDoubleLine,
 } from "react-icons/ri";
@@ -349,6 +349,7 @@ function InspectionWarningModal({ res, onRequestInspection, onProceed, onCancel 
 }
 
 export default function CheckOut({ highlightRoom, user }) {
+  console.log("USER:", user);
   const [reservations,  setReservations]  = useState([]);
   const [loading,       setLoading]       = useState(true);
   const [search,        setSearch]        = useState("");
@@ -520,18 +521,21 @@ export default function CheckOut({ highlightRoom, user }) {
       entity_type: "reservation", entity_id: snap.id,
     });
 
-    printCheckOutReceipt(
-      {
-        guestName: snap.guestName, roomNumber: snap.roomNumber,
-        checkInDate: selected?.check_in || "", checkOutDate: selected?.check_out || new Date().toISOString().split("T")[0],
-        roomCharge: snap.basTotal, resCharges: snap.addCharges.filter(c => c.from_reservation),
-        inHouseCharges: snap.addCharges.filter(c => !c.from_reservation),
-        inspCharges: snap.inspCharges, extraAmt: snap.extraAmt, extraNote: snap.extraNoteVal,
-        alreadyPaid: snap.alreadyPaid, grandTotal: snapGrandTotal, payMethod: snap.payMethod,
-        guestNotes: selected?.notes || "",
-      },
-      { name: user?.full_name || user?.email || "Staff", role: user?.role || "" }
-    );
+printCheckOutReceipt(
+  {
+    guestName: snap.guestName, roomNumber: snap.roomNumber,
+    checkInDate: selected?.check_in || "", checkOutDate: selected?.check_out || new Date().toISOString().split("T")[0],
+    roomCharge: snap.basTotal, resCharges: snap.addCharges.filter(c => c.from_reservation),
+    inHouseCharges: snap.addCharges.filter(c => !c.from_reservation),
+    inspCharges: snap.inspCharges, extraAmt: snap.extraAmt, extraNote: snap.extraNoteVal,
+    alreadyPaid: snap.alreadyPaid, grandTotal: snapGrandTotal, payMethod: snap.payMethod,
+    guestNotes: selected?.notes || "",
+  },
+  {
+    name: user?.full_name || user?.name || user?.email || "Staff",
+    role: user?.role || "",
+  }
+);
   };
 
   const filtered     = reservations.filter(r =>

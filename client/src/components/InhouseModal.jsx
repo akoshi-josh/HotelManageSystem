@@ -1,11 +1,24 @@
-import React, { useState } from "react";
+import { useState } from "react";
+import supabase from "../supabaseClient";
+import { logActivity } from "../logger";
 import {
-  RiUserLine, RiCalendarLine, RiAddCircleLine,
-  RiMoneyDollarCircleLine, RiStickyNoteLine, RiTimeLine,
-  RiCheckboxCircleLine, RiDeleteBinLine, RiLoginBoxLine,
-  RiCalendar2Line, RiSaveLine, RiRestaurantLine,
+  RiUserLine,
+  RiLoginBoxLine,
+  RiCalendarLine,
+  RiTimeLine,
+  RiCheckboxCircleLine,
+  RiMoneyDollarCircleLine,
+  RiCalendar2Line,
+  RiSaveLine,
+  RiStickyNoteLine,
+  RiAddCircleLine,
+  RiRestaurantLine,
+  RiDeleteBinLine,
+  RiCashLine,
+  RiCheckLine,
 } from "react-icons/ri";
 import RestaurantAddOnsModal from "./RestaurantAddOnsModal";
+import RoomPickerModal from "./RoomPickerModal";
 
 export default function InhouseModal({
   selected,
@@ -29,8 +42,21 @@ export default function InhouseModal({
   refundInfo,
   refundConfirmed,
   setRefundConfirmed,
+  availableRooms,
+  onRoomTransfer,
+  onPayNow,
 }) {
-  const [showRestaurant, setShowRestaurant] = useState(false);
+  const [showRestaurant,  setShowRestaurant]  = useState(false);
+  const [showRoomPicker,  setShowRoomPicker]  = useState(false);
+  const [showTransfer,    setShowTransfer]    = useState(false);
+  const [transferRoomId,  setTransferRoomId]  = useState("");
+  const [transferDate,    setTransferDate]    = useState(today);
+  const [transferring,    setTransferring]    = useState(false);
+  const [transferPreview, setTransferPreview] = useState(null);
+  const [showPayNow,      setShowPayNow]      = useState(false);
+  const [amountReceived,  setAmountReceived]  = useState("");
+  const [payingNow,       setPayingNow]       = useState(false);
+  const [paySuccess,      setPaySuccess]      = useState(false);
 
   if (!selected) return null;
 
@@ -43,6 +69,125 @@ export default function InhouseModal({
     .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
 
   const roomRateOnly = Math.max(0, parseFloat(selected.total_amount || 0) - fixedChargesSum);
+
+  const currentPricePerNight = parseFloat(selected.rooms?.price ?? 0);
+
+  const calcTransferPreview = (roomId, date) => {
+    if (!roomId || !date || !selected.check_in) return null;
+    const newRoom = availableRooms?.find(r => r.id === roomId);
+    if (!newRoom) return null;
+
+    const checkIn    = new Date(selected.check_in + "T00:00:00");
+    const checkOut   = selected.check_out ? new Date(selected.check_out + "T00:00:00") : null;
+    const transferDt = new Date(date + "T00:00:00");
+    const todayDt    = new Date(today + "T00:00:00");
+
+    const totalNights     = checkOut ? Math.round((checkOut - checkIn) / 86400000) : null;
+    const nightsConsumed  = Math.max(0, Math.round((transferDt - checkIn) / 86400000));
+    const nightsRemaining = totalNights ? Math.max(0, totalNights - nightsConsumed) : null;
+
+    const isSameDay = transferDt.getTime() === todayDt.getTime() && nightsConsumed === 0;
+
+    const oldRate = currentPricePerNight;
+    const newRate = parseFloat(newRoom.price);
+
+    let extraCharge = 0;
+    let refund = 0;
+    let newTotalAmount = 0;
+
+    if (isSameDay) {
+      newTotalAmount = totalNights ? totalNights * newRate : newRate;
+      const oldTotal = totalNights ? totalNights * oldRate : oldRate;
+      const diff = newTotalAmount - oldTotal;
+      if (diff > 0) extraCharge = diff;
+      else if (diff < 0) refund = Math.abs(diff);
+    } else {
+      const consumedCost  = nightsConsumed * oldRate;
+      const remainingCost = nightsRemaining ? nightsRemaining * newRate : newRate;
+      newTotalAmount = consumedCost + remainingCost + fixedChargesSum;
+      const oldTotal = parseFloat(selected.total_amount || 0);
+      const diff = newTotalAmount - oldTotal;
+      if (diff > 0) extraCharge = diff;
+      else if (diff < 0) refund = Math.abs(diff);
+    }
+
+    return {
+      newRoom,
+      newRate,
+      oldRate,
+      isSameDay,
+      nightsConsumed,
+      nightsRemaining,
+      totalNights,
+      extraCharge,
+      refund,
+      newTotalAmount,
+    };
+  };
+
+  const handleTransferRoomChange = (roomId) => {
+    setTransferRoomId(roomId);
+    setTransferPreview(calcTransferPreview(roomId, transferDate));
+  };
+
+  const handleTransferDateChange = (date) => {
+    setTransferDate(date);
+    setTransferPreview(calcTransferPreview(transferRoomId, date));
+  };
+
+  const handleConfirmTransfer = async () => {
+    if (!transferPreview || !transferRoomId) return;
+    setTransferring(true);
+    await onRoomTransfer(transferPreview, transferRoomId, transferDate);
+    setTransferring(false);
+    setShowTransfer(false);
+    setTransferRoomId("");
+    setTransferDate(today);
+    setTransferPreview(null);
+  };
+
+  const openPayNow = () => {
+    setAmountReceived(total > 0 ? total.toString() : "0");
+    setPaySuccess(false);
+    setShowPayNow(true);
+  };
+
+  const handlePayNow = async () => {
+    if (!selected || payingNow) return;
+    const paying = parseFloat(amountReceived || 0);
+    if (paying <= 0) return;
+    setPayingNow(true);
+
+    const prevPaid      = parseFloat(selected.amount_paid ?? 0);
+    const newAmountPaid = prevPaid + paying;
+    const newBalance    = Math.max(0, parseFloat(selected.remaining_balance ?? 0) - paying);
+    const isFullyPaid   = newBalance === 0;
+
+    await supabase.from("reservations").update({
+      amount_paid:       newAmountPaid,
+      remaining_balance: newBalance,
+      checkin_balance:   newBalance,
+      pay_later:         isFullyPaid ? false : selected.pay_later,
+      payment_method:    "cash",
+    }).eq("id", selected.id);
+
+    await logActivity({
+      action:      `In-house payment: ${selected.guest_name}`,
+      category:    "payment",
+      details:     `Room ${selected.room_number} | Paid ₱${paying.toLocaleString()} via cash | New balance: ₱${newBalance.toLocaleString()}`,
+      entity_type: "reservation",
+      entity_id:   selected.id,
+    });
+
+    if (onPayNow) await onPayNow(selected.id, newAmountPaid, newBalance, "cash", paying);
+
+    setPayingNow(false);
+    setPaySuccess(true);
+    setTimeout(() => {
+      setShowPayNow(false);
+      setPaySuccess(false);
+    }, 1800);
+  };
 
   return (
     <>
@@ -136,7 +281,6 @@ export default function InhouseModal({
                         value={extDate}
                         min={selected.check_in || today}
                         onChange={e => onExtDateChange(e.target.value)}
-                        placeholder="Select new date"
                       />
                       <button
                         className="extend-btn"
@@ -153,6 +297,101 @@ export default function InhouseModal({
                       </div>
                     )}
                   </div>
+
+                  {/* Room Transfer Box */}
+                  <div style={{ marginTop: "10px", background: "#f3e5f5", border: "1.5px solid #ce93d8", borderRadius: "10px", padding: "13px 15px" }}>
+                    <div style={{ fontSize: ".68rem", fontWeight: "700", color: "#6a1b9a", textTransform: "uppercase", letterSpacing: ".08em", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: showTransfer ? "12px" : "0" }}>
+                      <span>🔄 Room Transfer</span>
+                      <button
+                        onClick={() => setShowTransfer(t => !t)}
+                        style={{ background: "#6a1b9a", color: "#fff", border: "none", borderRadius: "7px", padding: "4px 12px", cursor: "pointer", fontSize: ".72rem", fontWeight: "700", fontFamily: "Arial,sans-serif" }}
+                      >
+                        {showTransfer ? "Cancel" : "Transfer Room"}
+                      </button>
+                    </div>
+
+                    {showTransfer && (
+                      <>
+                        <div style={{ marginBottom: "8px" }}>
+                          <div style={{ fontSize: ".68rem", fontWeight: "700", color: "#6a1b9a", textTransform: "uppercase", marginBottom: "4px" }}>Transfer Date</div>
+                          <input
+                            type="date"
+                            value={transferDate}
+                            min={today}
+                            max={selected.check_out || undefined}
+                            onChange={e => handleTransferDateChange(e.target.value)}
+                            style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #ce93d8", borderRadius: "8px", fontSize: ".86rem", fontFamily: "Arial,sans-serif", outline: "none", color: "#333", background: "#fff" }}
+                          />
+                        </div>
+
+                        <div style={{ marginBottom: "10px" }}>
+                          <div style={{ fontSize: ".68rem", fontWeight: "700", color: "#6a1b9a", textTransform: "uppercase", marginBottom: "4px" }}>Select New Room</div>
+                          {(() => {
+                            const pickedRoom = (availableRooms || []).find(r => r.id === transferRoomId);
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setShowRoomPicker(true)}
+                                style={{ width: "100%", padding: "8px 12px", border: "1.5px solid #ce93d8", borderRadius: "8px", fontSize: ".86rem", fontFamily: "Arial,sans-serif", outline: "none", background: "#fff", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", color: pickedRoom ? "#222" : "#a8b8a8", fontStyle: pickedRoom ? "normal" : "italic", textAlign: "left" }}
+                              >
+                                <span>
+                                  {pickedRoom
+                                    ? `Room ${pickedRoom.room_number} | ${pickedRoom.type} | Floor ${pickedRoom.floor} | ₱${parseFloat(pickedRoom.price).toLocaleString()}/night`
+                                    : "— Choose an available room —"
+                                  }
+                                </span>
+                                <span style={{ fontSize: "0.75rem", color: "#888", fontStyle: "normal" }}>Browse ▾</span>
+                              </button>
+                            );
+                          })()}
+                        </div>
+
+                        {transferPreview && (
+                          <div style={{ background: "#fff", borderRadius: "8px", padding: "10px 12px", marginBottom: "10px", border: "1px solid #e1bee7" }}>
+                            <div style={{ fontSize: ".68rem", fontWeight: "700", color: "#6a1b9a", textTransform: "uppercase", marginBottom: "8px" }}>Transfer Preview</div>
+                            <div style={{ fontSize: ".82rem", color: "#555", marginBottom: "4px" }}>
+                              <span style={{ color: "#888" }}>From:</span> Room {selected.room_number} · ₱{transferPreview.oldRate.toLocaleString()}/night
+                            </div>
+                            <div style={{ fontSize: ".82rem", color: "#555", marginBottom: "6px" }}>
+                              <span style={{ color: "#888" }}>To:</span> Room {transferPreview.newRoom.room_number} · ₱{transferPreview.newRate.toLocaleString()}/night
+                            </div>
+                            {transferPreview.isSameDay ? (
+                              <div style={{ fontSize: ".78rem", color: "#6a1b9a", fontStyle: "italic", marginBottom: "6px" }}>
+                                Same-day transfer — all {transferPreview.totalNights} night{transferPreview.totalNights !== 1 ? "s" : ""} at new rate
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: ".78rem", color: "#555", marginBottom: "6px" }}>
+                                {transferPreview.nightsConsumed} night{transferPreview.nightsConsumed !== 1 ? "s" : ""} at ₱{transferPreview.oldRate.toLocaleString()} + {transferPreview.nightsRemaining} night{transferPreview.nightsRemaining !== 1 ? "s" : ""} at ₱{transferPreview.newRate.toLocaleString()}
+                              </div>
+                            )}
+                            {transferPreview.extraCharge > 0 && (
+                              <div style={{ background: "#fff3e0", border: "1px solid #ffcc80", borderRadius: "7px", padding: "7px 10px", display: "flex", justifyContent: "space-between", fontSize: ".82rem" }}>
+                                <span style={{ color: "#e65100", fontWeight: "700" }}>Extra to Collect</span>
+                                <span style={{ color: "#e65100", fontWeight: "700" }}>₱{transferPreview.extraCharge.toLocaleString()}</span>
+                              </div>
+                            )}
+                            {transferPreview.refund > 0 && (
+                              <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: "7px", padding: "7px 10px", display: "flex", justifyContent: "space-between", fontSize: ".82rem" }}>
+                                <span style={{ color: "#f57f17", fontWeight: "700" }}>Refund to Guest</span>
+                                <span style={{ color: "#f57f17", fontWeight: "700" }}>₱{transferPreview.refund.toLocaleString()}</span>
+                              </div>
+                            )}
+                            {transferPreview.extraCharge === 0 && transferPreview.refund === 0 && (
+                              <div style={{ fontSize: ".78rem", color: "#07713c", fontWeight: "600" }}>No price difference — same total.</div>
+                            )}
+                          </div>
+                        )}
+
+                        <button
+                          onClick={handleConfirmTransfer}
+                          disabled={!transferRoomId || !transferPreview || transferring}
+                          style={{ width: "100%", padding: "9px", background: (!transferRoomId || !transferPreview || transferring) ? "#aaa" : "#6a1b9a", color: "#fff", border: "none", borderRadius: "8px", cursor: (!transferRoomId || !transferPreview || transferring) ? "not-allowed" : "pointer", fontWeight: "700", fontSize: ".84rem", fontFamily: "Arial,sans-serif" }}
+                        >
+                          {transferring ? "Transferring..." : "Confirm Room Transfer"}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {selected.notes && (
@@ -164,7 +403,6 @@ export default function InhouseModal({
               </div>
 
               <div className="mbody-right">
-
                 <div className="msec" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
                     <div className="msec-title" style={{ marginBottom: 0 }}><RiAddCircleLine size={13} />Additional Charges</div>
@@ -219,6 +457,68 @@ export default function InhouseModal({
                   </div>
                   <span className="total-amt">₱{total.toLocaleString()}</span>
                 </div>
+
+                {total > 0 && !showPayNow && (
+                  <button
+                    onClick={openPayNow}
+                    style={{ width: "100%", marginTop: "10px", padding: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px", background: "#e8f5e9", border: "1.5px solid #a7f3d0", borderRadius: "10px", cursor: "pointer", fontWeight: "700", fontSize: ".84rem", color: "#07713c", fontFamily: "Arial,sans-serif", transition: "background .15s" }}
+                    onMouseOver={e => e.currentTarget.style.background = "#d0f0da"}
+                    onMouseOut={e => e.currentTarget.style.background = "#e8f5e9"}
+                  >
+                    <RiCashLine size={16} /> Collect Payment Now
+                  </button>
+                )}
+
+                {showPayNow && (
+                  <div style={{ marginTop: "10px", background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "12px", padding: "14px 16px" }}>
+                    <div style={{ fontSize: ".68rem", fontWeight: "700", color: "#07713c", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: "12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><RiCashLine size={13} /> Collect Payment</span>
+                      <button onClick={() => setShowPayNow(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#888", fontSize: "1rem", lineHeight: 1 }}>×</button>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", borderRadius: "8px", padding: "8px 12px", marginBottom: "10px", border: "1px solid #d1fae5" }}>
+                      <span style={{ fontSize: ".8rem", color: "#555" }}>Current Balance Due</span>
+                      <span style={{ fontWeight: "800", color: "#07713c", fontSize: "1rem" }}>₱{total.toLocaleString()}</span>
+                    </div>
+
+                    <div style={{ marginBottom: "12px" }}>
+                      <div style={{ fontSize: ".68rem", fontWeight: "700", color: "#07713c", textTransform: "uppercase", marginBottom: "5px" }}>Amount Received (₱)</div>
+                      <input
+                        type="number"
+                        value={amountReceived}
+                        onChange={e => setAmountReceived(e.target.value)}
+                        min="0"
+                        step="0.01"
+                        style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #86efac", borderRadius: "8px", fontSize: ".95rem", fontFamily: "Arial,sans-serif", outline: "none", color: "#222", fontWeight: "700", background: "#fff" }}
+                      />
+                      {parseFloat(amountReceived || 0) > total && (
+                        <div style={{ fontSize: ".74rem", color: "#f57f17", marginTop: "4px", fontStyle: "italic" }}>
+                          ⚠ Amount exceeds balance — ₱{(parseFloat(amountReceived) - total).toLocaleString()} will be change.
+                        </div>
+                      )}
+                      {parseFloat(amountReceived || 0) < total && parseFloat(amountReceived || 0) > 0 && (
+                        <div style={{ fontSize: ".74rem", color: "#1565c0", marginTop: "4px", fontStyle: "italic" }}>
+                          Partial payment — ₱{(total - parseFloat(amountReceived)).toLocaleString()} will remain as balance.
+                        </div>
+                      )}
+                    </div>
+
+                    {paySuccess ? (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "11px", background: "#07713c", borderRadius: "9px", color: "#fff", fontWeight: "700", fontSize: ".88rem" }}>
+                        <RiCheckLine size={18} /> Payment Recorded!
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handlePayNow}
+                        disabled={payingNow || !parseFloat(amountReceived || 0)}
+                        style={{ width: "100%", padding: "11px", background: (payingNow || !parseFloat(amountReceived || 0)) ? "#aaa" : "#07713c", color: "#fff", border: "none", borderRadius: "9px", cursor: (payingNow || !parseFloat(amountReceived || 0)) ? "not-allowed" : "pointer", fontWeight: "700", fontSize: ".88rem", fontFamily: "Arial,sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px" }}
+                      >
+                        <RiCashLine size={16} />
+                        {payingNow ? "Processing..." : `Confirm ₱${parseFloat(amountReceived || 0).toLocaleString()} Payment`}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -245,8 +545,7 @@ export default function InhouseModal({
                       <span style={{ fontWeight: 700, color: "#c47000", fontSize: ".92rem" }}>Refund to Guest</span>
                       <span style={{ fontWeight: 800, color: "#c62828", fontSize: "1.2rem" }}>₱{parseFloat(refundInfo.diff).toLocaleString()}</span>
                     </div>
-                    <div
-                      onClick={() => setRefundConfirmed(r => !r)}
+                    <div onClick={() => setRefundConfirmed(r => !r)}
                       style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "11px 14px", borderRadius: 9, background: refundConfirmed ? "#ecfdf5" : "#fff", border: `1.5px solid ${refundConfirmed ? "#4caf50" : "#e0e0e0"}`, transition: "all .2s" }}>
                       <div style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${refundConfirmed ? "#4caf50" : "#ccc"}`, background: refundConfirmed ? "#4caf50" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                         {refundConfirmed && <span style={{ color: "#fff", fontSize: ".7rem", fontWeight: 700 }}>✓</span>}
@@ -305,10 +604,21 @@ export default function InhouseModal({
           roomNumber={selected?.room_number}
           isCheckedIn={true}
           onClose={() => setShowRestaurant(false)}
-onConfirm={(charges) => {
-  onAddChargeObject(charges);
-  setShowRestaurant(false);
-}}
+          onConfirm={(charges) => {
+            onAddChargeObject(charges);
+            setShowRestaurant(false);
+          }}
+        />
+      )}
+      {showRoomPicker && (
+        <RoomPickerModal
+          rooms={availableRooms}
+          selectedRoomId={transferRoomId}
+          onSelect={r => {
+            handleTransferRoomChange(r.id);
+            setShowRoomPicker(false);
+          }}
+          onClose={() => setShowRoomPicker(false)}
         />
       )}
     </>
