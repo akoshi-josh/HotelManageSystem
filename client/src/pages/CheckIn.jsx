@@ -384,7 +384,14 @@ export default function CheckIn({ user }) {
     try {
       const checkedId  = selected.id;
       const tableName  = selected._source || "reservations";
-      const baseTotal  = parseFloat(selected?.total_amount || 0);
+      const baseTotal = parseFloat(selected?.total_amount || 0);
+const pureRoomRate = baseTotal - (() => {
+  try {
+    return JSON.parse(selected.additional_charges || "[]")
+      .filter(c => c.from_reservation)
+      .reduce((s, c) => s + parseFloat(c.amount || 0), 0);
+  } catch { return 0; }
+})();
       const newCheckinCharges      = (additionalCharges || []).filter(c => !c.from_reservation);
       const newCheckinChargesTotal = newCheckinCharges.reduce((s, c) => s + parseFloat(c.amount || 0), 0);
       const totalBill              = baseTotal + newCheckinChargesTotal;
@@ -405,7 +412,8 @@ export default function CheckIn({ user }) {
           additional_charges: JSON.stringify(mergedCharges), amount_paid: paidAmt,
           pay_later: payLater || isPartial, payment_method: payLater ? "pay_at_checkout" : paymentMethod,
           remaining_balance: remainingAtCheckIn, checkin_balance: remainingAtCheckIn,
-        }]).select("id").single();
+          room_rate: pureRoomRate,
+          }]).select("id").single();
         if (insertErr) { alert("Check-in failed: " + insertErr.message); setProcessing(false); return; }
         reservationIdForOrders = newRes.id;
         await supabase.from("newGuest").delete().eq("id", checkedId);
@@ -414,7 +422,8 @@ export default function CheckIn({ user }) {
           status: "checked_in", payment_method: payLater ? "pay_at_checkout" : paymentMethod,
           amount_paid: paidAmt, pay_later: payLater || isPartial, total_amount: totalBill,
           additional_charges: JSON.stringify(mergedCharges), remaining_balance: remainingAtCheckIn, checkin_balance: remainingAtCheckIn,
-        }).eq("id", checkedId);
+          room_rate: pureRoomRate,
+          }).eq("id", checkedId);
         if (updateErr) { alert("Check-in failed: " + updateErr.message); setProcessing(false); return; }
       }
 
@@ -535,10 +544,41 @@ if (paidAmt > 0) {
       payment_method: walkInPayLater ? "pay_at_checkout" : "cash",
       additional_charges: JSON.stringify((walkIn.additional_charges || []).map(c => ({ ...c, from_checkin: true }))),
       remaining_balance: remainingAtCheckIn, checkin_balance: remainingAtCheckIn,
-    });
+      room_rate: total,
+      });    
 
     if (error) { setWalkInError(error.message); setSavingWalkIn(false); return; }
     await supabase.from("rooms").update({ status: "occupied" }).eq("id", walkIn.room_id);
+
+    // Save restaurant orders directly as pending (guest is already checked in)
+const restaurantCharges = (walkIn.additional_charges || []).filter(c => c.from_restaurant);
+if (restaurantCharges.length > 0) {
+  const { data: newRes } = await supabase
+    .from("reservations")
+    .select("id, room_number")
+    .eq("guest_name", walkIn.guest_name)
+    .eq("room_id", walkIn.room_id)
+    .eq("status", "checked_in")
+    .single();
+
+  if (newRes) {
+    await supabase.from("restaurant_orders").insert([{
+      reservation_id: newRes.id,
+      guest_name:     walkIn.guest_name,
+      room_number:    String(room?.room_number || ""),
+      items: restaurantCharges.map(c => ({
+        id:       c.restaurant_item_id || c.id,
+        name:     c.name.replace(/^\[Restaurant\] /, "").replace(/ ×\d+$/, ""),
+        price:    c.unit_price || c.amount,
+        qty:      c.qty || 1,
+        subtotal: parseFloat(c.amount),
+      })),
+      total_amount: restaurantCharges.reduce((s, c) => s + parseFloat(c.amount), 0),
+      status: "pending",
+    }]);
+  }
+}
+
     logActivity({ action: `Walk-in check-in: ${walkIn.guest_name}`, category: "check_in", details: `Room ${room?.room_number} | Total ₱${totalWithCharges.toLocaleString()}`, entity_type: "reservation" });
     if (error) { setWalkInError(error.message); setSavingWalkIn(false); return; }
 await supabase.from("rooms").update({ status: "occupied" }).eq("id", walkIn.room_id);

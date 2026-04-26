@@ -357,10 +357,23 @@ export default function CheckOutModal({
   const roomRate        = parseFloat(selected?.total_amount || 0);
   const extraNow        = parseFloat(extraCharges || 0);
   const inspectionTotal = getInspectionCharges(selected).reduce((s, c) => s + parseFloat(c.amount || 0), 0);
-  const displayRoomRate = roomRate - inHouseTotal - resChargesTotal;
+  const paymentHistory = (() => {
+  try { return JSON.parse(selected.payment_history || "[]"); } catch { return []; }
+})();
+
+const transferAndExtendTotal = paymentHistory
+  .filter(h => h.type === "date_change_charge" || h.type === "room_transfer_charge")
+  .reduce((s, h) => s + parseFloat(h.amount || 0), 0);
+
+const displayRoomRate = parseFloat(selected?.room_rate || 0) > 0
+  ? parseFloat(selected.room_rate)
+  : roomRate - inHouseTotal - resChargesTotal - transferAndExtendTotal;
 
   const grandTotal     = parseFloat(selected?.remaining_balance ?? selected?.total_amount ?? 0) + inspectionTotal + extraNow;
   const total          = parseFloat(selected?.total_amount || 0);
+const displaySubtotal = parseFloat(selected?.room_rate || 0) > 0
+  ? parseFloat(selected.room_rate) + inHouseTotal + resChargesTotal + transferAndExtendTotal
+  : total;
   const reservationDP  = parseFloat(selected?.reservation_downpayment || 0);
   const checkinPayment = parseFloat(selected?.amount_paid || 0);
   const totalPaid      = reservationDP > 0 ? reservationDP + checkinPayment : checkinPayment;
@@ -374,9 +387,7 @@ export default function CheckOutModal({
   const hasDP               = reservationDP > 0 || (selected?.pay_later && checkinPayment > 0 && checkinPayment < roomRate);
   const isConfirmDisabled   = processing || (!fullyPaid && (amtGiven <= 0 || amtGiven < remainingBalance));
 
-  const paymentHistory = (() => {
-    try { return JSON.parse(selected.payment_history || "[]"); } catch { return []; }
-  })();
+
 
   const historyMeta = {
     inhouse_payment:      { label: "Cash Payment",  color: "#07713c", bg: "#e8f5e9", symbol: "💵", deduct: true  },
@@ -574,6 +585,10 @@ export default function CheckOutModal({
                 <span style={{ color: "var(--text-sec)", fontWeight: "600" }}>Room Rate</span>
                 <span style={{ fontWeight: "700", color: "var(--text)" }}>₱{displayRoomRate.toLocaleString()}</span>
               </div>
+              <div className="com-bill-row">
+                <span style={{ color: "var(--text-sec)", fontWeight: "600" }}>Reservation Charges </span>
+                <span style={{ fontWeight: "700", color: "var(--text)" }}>₱{resChargesTotal.toLocaleString()}</span>
+              </div>
 
               {/* Reservation charges */}
               {resCharges.length > 0 && (
@@ -588,10 +603,10 @@ export default function CheckOutModal({
               )}
 
               {/* In-house charges */}
-              {inHouseTotal > 0 && (
+              {(inHouseTotal > 0 || paymentHistory.some(h => h.type === "date_change_charge" || h.type === "room_transfer_charge")) && (
                 <>
                   <div className="com-bill-row">
-                    <span style={{ color: "#6a1b9a", fontWeight: "600" }}>In-House Charges</span>
+                    <span style={{ color: "#6a1b9a", fontWeight: "600" }}>In-House / CheckIn Charges</span>
                     <span style={{ fontWeight: "700", color: "#6a1b9a" }}>₱{inHouseTotal.toLocaleString()}</span>
                   </div>
 {inHouseCharges.map(c => (
@@ -633,7 +648,7 @@ export default function CheckOutModal({
               {/* Total */}
               <div className="com-bill-total">
                 <span style={{ fontWeight: "800", color: "var(--text)", fontSize: ".9rem" }}>Subtotal</span>
-                <span style={{ fontWeight: "800", color: "var(--green)", fontSize: ".95rem" }}>₱{total.toLocaleString()}</span>
+                <span style={{ fontWeight: "800", color: "var(--green)", fontSize: ".95rem" }}>₱{displaySubtotal.toLocaleString()}</span>
               </div>
 
               {/* Already paid rows */}

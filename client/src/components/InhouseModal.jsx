@@ -19,6 +19,7 @@ import {
 } from "react-icons/ri";
 import RestaurantAddOnsModal from "./RestaurantAddOnsModal";
 import RoomPickerModal from "./RoomPickerModal";
+import { printInHouseReceipt } from "../receiptPrinter ";
 
 export default function InhouseModal({
   selected,
@@ -45,6 +46,7 @@ export default function InhouseModal({
   availableRooms,
   onRoomTransfer,
   onPayNow,
+  user
 }) {
   const [showRestaurant,  setShowRestaurant]  = useState(false);
   const [showRoomPicker,  setShowRoomPicker]  = useState(false);
@@ -153,6 +155,7 @@ export default function InhouseModal({
   };
 
   const handlePayNow = async () => {
+    console.log("USER OBJECT:", user);
     if (!selected || payingNow) return;
     const paying = parseFloat(amountReceived || 0);
     if (paying <= 0) return;
@@ -180,6 +183,25 @@ export default function InhouseModal({
     });
 
     if (onPayNow) await onPayNow(selected.id, newAmountPaid, newBalance, "cash", paying);
+
+    printInHouseReceipt(
+  {
+    guestName:    selected.guest_name,
+    roomNumber:   selected.room_number,
+    checkInDate:  selected.check_in,
+    checkOutDate: selected.check_out || null,
+    charges:      [{ name: "Cash Payment Collected", amount: paying }],
+    amountPaid:   paying,
+    payMethod:    "cash",
+    notes:        `New balance after payment: ₱${newBalance.toLocaleString()}`,
+  },
+  {
+  name: user?.full_name || user?.name || user?.email || "Staff",
+  role: user?.role || user?.user_metadata?.role || "Front Desk",
+}
+);
+setPayingNow(false);
+setPaySuccess(true);
 
     setPayingNow(false);
     setPaySuccess(true);

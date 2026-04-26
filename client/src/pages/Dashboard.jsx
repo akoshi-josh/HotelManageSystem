@@ -506,7 +506,7 @@ export default function Dashboard({ onLogout, user }) {
       case "Check-Out":    return <CheckOut    key={`checkout-${navKey}`} user={user} />;
       case "Guests":       return <Guests />;
       case "Maintenance":  return <Maintenance key={`maintenance-${navKey}`} user={user} />;
-      case "In-House":     return <InHouse     key={`inhouse-${navKey}`} />;
+      case "In-House": return <InHouse key={`inhouse-${navKey}`} user={user} />;
       case "Pricing":      return <Pricing />;
       case "Log":          return <ActivityLog />;
       case "Settings":     return <Settings user={user} userRole={role} />;

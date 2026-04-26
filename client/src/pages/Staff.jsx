@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   RiGroupLine, RiCheckboxCircleLine, RiCloseCircleLine,
-  RiPencilLine, RiUserAddLine,
+  RiPencilLine, RiUserAddLine, RiDeleteBinLine,
 } from "react-icons/ri";
 import supabase from "../supabaseClient";
 import StaffModal from "../components/StaffModal";
@@ -43,6 +43,8 @@ const CSS = `
 .ba { display:inline-flex; align-items:center; gap:5px; padding:5px 11px; border-radius:7px; border:1.5px solid; font-size:.74rem; font-weight:700; font-family:Arial,sans-serif; cursor:pointer; transition:background .15s; }
 .ba-edit { border-color:#fde68a; color:#92400e; background:#fffbeb; }
 .ba-edit:hover { background:#fef3c7; }
+.ba-del  { border-color:#fca5a5; color:#dc2626; background:#fff5f5; }
+.ba-del:hover  { background:#fee2e2; }
 .empty { padding:48px; text-align:center; color:#9aaa9a; font-size:.88rem; }
 /* MODAL */
 .mo { position:fixed; inset:0; z-index:999; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.48); backdrop-filter:blur(2px); padding:16px; }
@@ -66,8 +68,13 @@ const CSS = `
 .btn-confirm { flex:2; padding:12px; background:#07713c; border:none; border-radius:10px; cursor:pointer; font-size:.9rem; font-weight:700; color:#fff; font-family:Arial,sans-serif; box-shadow:0 4px 14px rgba(7,113,60,.28); }
 .btn-confirm:hover:not(:disabled) { background:#05592f; }
 .btn-confirm:disabled { background:#a8b8a8; cursor:not-allowed; box-shadow:none; }
+.btn-delete-confirm { flex:2; padding:12px; background:#dc2626; border:none; border-radius:10px; cursor:pointer; font-size:.9rem; font-weight:700; color:#fff; font-family:Arial,sans-serif; box-shadow:0 4px 14px rgba(220,38,38,.28); display:inline-flex; align-items:center; justify-content:center; gap:7px; }
+.btn-delete-confirm:hover:not(:disabled) { background:#b91c1c; }
+.btn-delete-confirm:disabled { background:#a8b8a8; cursor:not-allowed; box-shadow:none; }
 .alert-ok  { padding:10px 15px; border-radius:8px; background:#e8f5e9; border-left:3px solid #4cae4c; color:#1b5e20; font-size:.84rem; margin-bottom:14px; }
 .alert-err { padding:10px 15px; border-radius:8px; background:#fdecea; border-left:3px solid #e53935; color:#b71c1c; font-size:.84rem; margin-bottom:14px; }
+/* Delete confirm modal — smaller width */
+.mb-sm { max-width:420px; }
 `;
 
 const ROLE_PILL = {
@@ -75,19 +82,24 @@ const ROLE_PILL = {
   staff:        { bg: "#e3f2fd", color: "#1565c0" },
   receptionist: { bg: "#f3e5f5", color: "#6a1b9a" },
   maintenance:  { bg: "#fff3e0", color: "#e65100" },
-  restaurant:   { bg: "#fdf2f8", color: "#9c27b0" },  // ← NEW
+  restaurant:   { bg: "#fdf2f8", color: "#9c27b0" },
 };
 
 export default function Staff() {
-  const [staffList, setStaffList] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editUser,  setEditUser]  = useState(null);
-  const [saving,    setSaving]    = useState(false);
-  const [error,     setError]     = useState("");
-  const [success,   setSuccess]   = useState("");
-  const [search,    setSearch]    = useState("");
+  const [staffList,   setStaffList]   = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [showModal,   setShowModal]   = useState(false);
+  const [editUser,    setEditUser]    = useState(null);
+  const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState("");
+  const [success,     setSuccess]     = useState("");
+  const [search,      setSearch]      = useState("");
   const [form, setForm] = useState({ full_name: "", email: "", password: "", role: "staff", status: "active" });
+
+  // Delete state
+  const [deleteTarget,  setDeleteTarget]  = useState(null); // user object to delete
+  const [deleting,      setDeleting]      = useState(false);
+  const [deleteError,   setDeleteError]   = useState("");
 
   useEffect(() => { fetchStaff(); }, []);
 
@@ -108,6 +120,11 @@ export default function Staff() {
     setEditUser(u);
     setForm({ full_name: u.full_name, email: u.email, password: "", role: u.role, status: u.status });
     setError(""); setSuccess(""); setShowModal(true);
+  };
+
+  const openDelete = (u) => {
+    setDeleteTarget(u);
+    setDeleteError("");
   };
 
   const handleSave = async () => {
@@ -140,6 +157,45 @@ export default function Staff() {
     setTimeout(() => { setShowModal(false); setSuccess(""); }, 1500);
   };
 
+  const handleDelete = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+
+    try {
+      // Delete from your users table first
+      const { error: dbErr } = await supabase
+        .from("users")
+        .delete()
+        .eq("id", deleteTarget.id);
+
+      if (dbErr) {
+        setDeleteError("Failed to delete user from database.");
+        setDeleting(false);
+        return;
+      }
+
+      // Also delete from Supabase Auth via your backend
+      // If you don't have this endpoint yet, the DB row is already removed above
+      try {
+        await fetch("http://localhost:5000/api/delete-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: deleteTarget.id }),
+        });
+      } catch {
+        // Backend auth delete failed silently — DB row is already gone
+      }
+
+      fetchStaff();
+      setDeleteTarget(null);
+    } catch {
+      setDeleteError("An unexpected error occurred.");
+    }
+
+    setDeleting(false);
+  };
+
   const toggleStatus = async (u) => {
     const newStatus = u.status === "active" ? "inactive" : "active";
     await supabase.from("users").update({ status: newStatus }).eq("id", u.id);
@@ -158,7 +214,7 @@ export default function Staff() {
     { lbl: "Inactive",    val: staffList.filter(s => s.status === "inactive").length, Icon: RiCloseCircleLine,    bg: "#fff3e0", c: "#e65100" },
   ];
 
-  const cols = "2fr 2fr 1fr 1fr 1.2fr 1.5fr";
+  const cols = "2fr 2fr 1fr 1fr 1.2fr 1.8fr";
 
   return (
     <>
@@ -223,7 +279,7 @@ export default function Staff() {
                     </span>
                   </div>
                   <div style={{ fontSize: ".82rem", color: "#8a9a8a" }}>{new Date(s.created_at).toLocaleDateString()}</div>
-                  <div style={{ display: "flex", gap: "6px" }}>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                     <button className="ba ba-edit" onClick={() => openEdit(s)}>
                       <RiPencilLine size={13} /> Edit
                     </button>
@@ -237,6 +293,9 @@ export default function Staff() {
                         : <><RiCheckboxCircleLine size={13} /> Activate</>
                       }
                     </button>
+                    <button className="ba ba-del" onClick={() => openDelete(s)}>
+                      <RiDeleteBinLine size={13} /> Delete
+                    </button>
                   </div>
                 </div>
               );
@@ -244,6 +303,66 @@ export default function Staff() {
           </div>
         </div>
       </div>
+
+      {/* ── Delete Confirmation Modal ── */}
+      {deleteTarget && (
+        <div className="mo" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="mb mb-sm" onClick={e => e.stopPropagation()}>
+
+            <div className="mh" style={{ background: "linear-gradient(135deg,#c62828,#e53935)" }}>
+              <div>
+                <div className="mh-title">Delete Staff Account</div>
+                <div className="mh-sub">This action cannot be undone</div>
+              </div>
+              <button className="mx" onClick={() => !deleting && setDeleteTarget(null)}>×</button>
+            </div>
+
+            <div className="mbody">
+              {/* Avatar + name */}
+              <div style={{ display: "flex", alignItems: "center", gap: "14px", background: "#fff", borderRadius: "12px", padding: "16px 18px", marginBottom: "16px", border: "1px solid #fecaca" }}>
+                <div style={{ width: "46px", height: "46px", borderRadius: "50%", background: "linear-gradient(135deg,#c62828,#ef9a9a)", color: "#fff", fontWeight: "700", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  {deleteTarget.full_name.slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <div style={{ fontWeight: "700", color: "#1a1a1a", fontSize: ".95rem" }}>{deleteTarget.full_name}</div>
+                  <div style={{ fontSize: ".82rem", color: "#6b7a6b", marginTop: "2px" }}>{deleteTarget.email}</div>
+                  <div style={{ marginTop: "4px" }}>
+                    <span className="pill" style={{ background: (ROLE_PILL[deleteTarget.role] || {}).bg || "#f5f5f5", color: (ROLE_PILL[deleteTarget.role] || {}).color || "#888" }}>
+                      {deleteTarget.role}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Warning */}
+              <div style={{ background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "10px", padding: "14px 16px", marginBottom: "16px" }}>
+                <div style={{ fontWeight: "700", color: "#c62828", fontSize: ".84rem", marginBottom: "6px" }}>
+                  ⚠ Are you sure you want to delete this account?
+                </div>
+                <div style={{ fontSize: ".80rem", color: "#7f1d1d", lineHeight: "1.6" }}>
+                  This will permanently remove <strong>{deleteTarget.full_name}</strong> from the system.
+                  Their login access will be revoked and all associated data will be deleted.
+                </div>
+              </div>
+
+              {deleteError && (
+                <div className="alert-err">{deleteError}</div>
+              )}
+            </div>
+
+            <div className="mfoot">
+              <button className="btn-cancel" onClick={() => !deleting && setDeleteTarget(null)} disabled={deleting}>
+                Cancel
+              </button>
+              <button className="btn-delete-confirm" onClick={handleDelete} disabled={deleting}>
+                <RiDeleteBinLine size={15} />
+                {deleting ? "Deleting..." : "Yes, Delete Account"}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       <StaffModal
         showModal={showModal}

@@ -267,7 +267,8 @@ export default function Reservations() {
       ...(form.check_out ? { check_out: form.check_out } : {}),
       status:       form.status,
       total_amount: calcTotal(),
-      notes:        form.notes,
+      room_rate: calcRoomOnly(),
+      notes: form.notes,
       additional_charges: JSON.stringify(
         (form.additional_charges || []).map(c => ({ ...c, from_reservation: true }))
       ),
